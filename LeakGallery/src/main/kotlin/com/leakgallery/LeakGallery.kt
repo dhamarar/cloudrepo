@@ -6,6 +6,9 @@ import com.fasterxml.jackson.module.kotlin.readValue
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
 import com.lagradost.cloudstream3.utils.*
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 
@@ -125,42 +128,57 @@ class LeakGallery : MainAPI() {
             val allMedias = mutableListOf<MediaItem>()
             firstPage.medias?.let { allMedias.addAll(it) }
 
-            // Muat halaman berikutnya secara sekuensial hingga maksimal 5 halaman untuk episode lengkap
-            if (allMedias.size >= 40) {
-                for (p in 2..5) {
-                    try {
-                        val nextPageText = app.get(
-                            "$apiUrl/profile/$username/$p?type=Videos&sort=MostRecent&fake=false",
-                            headers = defaultHeaders
-                        ).text
-                        val nextPage = jsonMapper.readValue<ProfileDetailNextPage>(nextPageText)
-                        val nextList = nextPage.medias
-                        if (!nextList.isNullOrEmpty()) {
-                            allMedias.addAll(nextList)
-                            if (nextList.size < 40) break
-                        } else {
-                            break
+            // Ambil hingga 25 halaman (maksimal ~1.000 video) secara paralel menggunakan coroutines
+            if ((firstPage.medias?.size ?: 0) >= 40) {
+                val additionalPages = coroutineScope {
+                    (2..25).map { page ->
+                        async {
+                            try {
+                                val nextPageText = app.get(
+                                    "$apiUrl/profile/$username/$page?type=Videos&sort=MostRecent&fake=false",
+                                    headers = defaultHeaders
+                                ).text
+                                jsonMapper.readValue<ProfileDetailNextPage>(nextPageText).medias ?: emptyList()
+                            } catch (_: Exception) {
+                                emptyList()
+                            }
                         }
-                    } catch (_: Exception) {
-                        break
+                    }.awaitAll()
+                }
+                for (pageList in additionalPages) {
+                    if (pageList.isNotEmpty()) {
+                        allMedias.addAll(pageList)
                     }
                 }
             }
 
+            // Kelompokkan 50 video per season untuk navigasi Season dan Next Episode di player
+            val perSeason = 50
             val episodes = allMedias.filter { it.is_video != false }.mapIndexedNotNull { index, media ->
                 val mediaId = media.id ?: return@mapIndexedNotNull null
-                val title = media.caption_title?.trim().takeUnless { it.isNullOrBlank() } ?: "Episode ${index + 1}"
+                val title = media.caption_title?.trim().takeUnless { it.isNullOrBlank() } ?: "Video #${index + 1}"
                 val poster = media.thumbnail_path?.let { fixUrlNull("$cdnUrl/$it") }
                 val streamUrl = media.file_path?.let { "$cdnUrl/$it" } ?: "$mainUrl/$username/$mediaId"
 
+                val seasonNum = (index / perSeason) + 1
+                val episodeNum = (index % perSeason) + 1
+
                 newEpisode(streamUrl) {
                     this.name = title
-                    this.episode = index + 1
+                    this.season = seasonNum
+                    this.episode = episodeNum
                     this.posterUrl = poster
                     media.duration?.let { dur ->
                         this.description = "Duration: ${dur}s"
                     }
                 }
+            }
+
+            val maxSeason = if (episodes.isEmpty()) 1 else (episodes.size - 1) / perSeason + 1
+            val seasonNamesList = (1..maxSeason).map { s ->
+                val start = (s - 1) * perSeason + 1
+                val end = minOf(s * perSeason, episodes.size)
+                SeasonData(s, "Season $s ($start-$end)")
             }
 
             val prof = firstPage.profile
@@ -172,6 +190,7 @@ class LeakGallery : MainAPI() {
                 this.posterUrl = poster
                 this.backgroundPosterUrl = banner
                 this.posterHeaders = defaultHeaders
+                this.seasonNames = seasonNamesList
                 this.plot = "Total videos: ${episodes.size}${prof?.subscribers?.let { ", Subscribers: $it" } ?: ""}"
             }
         }
@@ -186,12 +205,23 @@ class LeakGallery : MainAPI() {
                 val streamUrl = media.file_path?.let { "$cdnUrl/$it" } ?: url
                 val poster = media.thumbnail_path?.let { fixUrlNull("$cdnUrl/$it") }
 
+                val recs = media.suggested_media?.filter { it.is_video != false }?.mapNotNull { sm ->
+                    val smId = sm.id ?: return@mapNotNull null
+                    val smTitle = sm.caption_title?.trim().takeUnless { it.isNullOrBlank() } ?: "Video #$smId"
+                    val smPoster = sm.thumbnail_path?.let { fixUrlNull("$cdnUrl/$it") }
+                    newMovieSearchResponse(smTitle, "$mainUrl/${media.profile?.username ?: "user"}/$smId", TvType.NSFW) {
+                        this.posterUrl = smPoster
+                        this.posterHeaders = defaultHeaders
+                    }
+                }
+
                 return newMovieLoadResponse(title, url, TvType.NSFW, streamUrl) {
                     this.posterUrl = poster
                     this.posterHeaders = defaultHeaders
                     this.plot = media.caption_description
                     this.duration = media.duration
                     this.tags = media.tags?.mapNotNull { it.slug }
+                    this.recommendations = recs
                     media.profile?.username?.let { author ->
                         addActors(listOf(Actor(author, media.profile.profile_pic)))
                     }
@@ -340,7 +370,8 @@ data class MediaDetail(
     val is_video: Boolean? = null,
     val duration: Int? = null,
     val profile: ProfileShort? = null,
-    val tags: List<MediaTag>? = null
+    val tags: List<MediaTag>? = null,
+    val suggested_media: List<MediaItem>? = null
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)
