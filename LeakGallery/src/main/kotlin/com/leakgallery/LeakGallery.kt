@@ -32,14 +32,111 @@ class LeakGallery : MainAPI() {
     override val mainPage = mainPageOf(
         "popular/media/Last-Hour/%d?fake=false" to "Newest",
         "popular/media/All-Time/%d?fake=false" to "Trending All Time",
-        "popular/media/Week/%d?fake=false" to "Trending This Week"
+        "popular/media/Week/%d?fake=false" to "Trending This Week",
+        "tag/curvy/%d" to "Curvy",
+        "tag/lingerie/%d" to "Lingerie",
+        "tag/nude/%d" to "Nude",
+        "tag/tattooed/%d" to "Tattooed",
+        "tag/long-hair/%d" to "Long Hair",
+        "tag/big-ass/%d" to "Big Ass",
+        "tag/big-boobs/%d" to "Big Boobs",
+        "tag/blonde/%d" to "Blonde",
+        "tag/brunette/%d" to "Brunette",
+        "tag/topless/%d" to "Topless",
+        "tag/black-hair/%d" to "Black Hair",
+        "tag/slim/%d" to "Slim",
+        "tag/white/%d" to "White",
+        "tag/natural-boobs/%d" to "Natural Boobs",
+        "tag/teasing/%d" to "Teasing",
+        "tag/pierced/%d" to "Pierced",
+        "tag/masturbation/%d" to "Masturbation",
+        "tag/mirror/%d" to "Mirror",
+        "tag/behind-the-scenes/%d" to "Behind The Scenes",
+        "tag/shaved/%d" to "Shaved",
+        "tag/stockings/%d" to "Stockings",
+        "tag/couple/%d" to "Couple",
+        "tag/thick/%d" to "Thick",
+        "tag/fake-boobs/%d" to "Fake Boobs",
+        "tag/outdoor/%d" to "Outdoor",
+        "tag/doggystyle/%d" to "Doggystyle",
+        "tag/cosplay/%d" to "Cosplay",
+        "tag/bikini/%d" to "Bikini",
+        "tag/hairy/%d" to "Hairy",
+        "tag/blowjob/%d" to "Blowjob",
+        "tag/redhead/%d" to "Redhead",
+        "tag/professional/%d" to "Professional",
+        "tag/shower/%d" to "Shower",
+        "tag/asian/%d" to "Asian",
+        "tag/bathroom/%d" to "Bathroom",
+        "tag/toys/%d" to "Toys",
+        "tag/indian/%d" to "Indian",
+        "tag/short-hair/%d" to "Short Hair",
+        "tag/twerking/%d" to "Twerking",
+        "tag/lesbian/%d" to "Lesbian",
+        "tag/night/%d" to "Night",
+        "tag/heels/%d" to "Heels",
+        "tag/fishnet/%d" to "Fishnet",
+        "tag/pov/%d" to "POV",
+        "tag/hotel/%d" to "Hotel",
+        "tag/kitchen/%d" to "Kitchen",
+        "tag/petite/%d" to "Petite",
+        "tag/dildo/%d" to "Dildo",
+        "tag/latex/%d" to "Latex",
+        "tag/ebony/%d" to "Ebony",
+        "tag/car/%d" to "Car",
+        "tag/dress/%d" to "Dress",
+        "tag/dancing/%d" to "Dancing",
+        "tag/livestream/%d" to "Livestream",
+        "tag/yoga-pants/%d" to "Yoga Pants",
+        "tag/handjob/%d" to "Handjob",
+        "tag/latina/%d" to "Latina",
+        "tag/fingering/%d" to "Fingering",
+        "tag/nurse/%d" to "Nurse",
+        "tag/pool/%d" to "Pool",
+        "tag/bathtub/%d" to "Bathtub",
+        "tag/skirt/%d" to "Skirt",
+        "tag/wet/%d" to "Wet",
+        "tag/roleplay/%d" to "Roleplay",
+        "tag/athletic/%d" to "Athletic",
+        "tag/balcony/%d" to "Balcony",
+        "tag/maid/%d" to "Maid",
+        "tag/group-sex/%d" to "Group Sex",
+        "tag/gym/%d" to "Gym",
+        "tag/teen/%d" to "Teen",
+        "tag/uniform/%d" to "Uniform",
+        "tag/beach/%d" to "Beach",
+        "tag/footjob/%d" to "Footjob",
+        "tag/facial/%d" to "Facial",
+        "tag/bbw/%d" to "BBW",
+        "tag/threesome/%d" to "Threesome",
+        "tag/deepthroat/%d" to "Deepthroat",
+        "tag/small-boobs/%d" to "Small Boobs",
+        "tag/office/%d" to "Office",
+        "tag/titjob/%d" to "Titjob",
+        "tag/asmr/%d" to "ASMR",
+        "tag/try-on/%d" to "Try On",
+        "tag/anal/%d" to "Anal",
+        "tag/creampie/%d" to "Creampie",
+        "tag/cowgirl/%d" to "Cowgirl",
+        "tag/squirting/%d" to "Squirting",
+        "tag/joi/%d" to "JOI",
+        "tag/public/%d" to "Public",
+        "tag/orgy/%d" to "Orgy",
+        "tag/striptease/%d" to "Striptease",
+        "tag/arab/%d" to "Arab",
+        "tag/69/%d" to "69",
+        "tag/cumshot/%d" to "Cumshot"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val url = "$apiUrl/${request.data.format(page)}"
         val response = app.get(url, headers = defaultHeaders).text
         val items = try {
-            jsonMapper.readValue<List<MediaItem>>(response)
+            if (request.data.startsWith("tag/")) {
+                jsonMapper.readValue<TagDetailResponse>(response).items ?: emptyList()
+            } else {
+                jsonMapper.readValue<List<MediaItem>>(response)
+            }
         } catch (_: Exception) {
             emptyList()
         }
@@ -106,6 +203,74 @@ class LeakGallery : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
+        // Penanganan URL Tag
+        if (url.contains("/tag/")) {
+            val tagSlug = url.substringAfter("/tag/").substringBefore("/").substringBefore("?").trim()
+            val responseText = app.get("$apiUrl/tag/$tagSlug/1", headers = defaultHeaders).text
+            val tagData = jsonMapper.readValue<TagDetailResponse>(responseText)
+            val allTagItems = mutableListOf<MediaItem>()
+            tagData.items?.let { allTagItems.addAll(it) }
+
+            // Ambil halaman berikutnya secara paralel jika ada banyak item
+            if (allTagItems.size >= 40) {
+                val additionalPages = coroutineScope {
+                    (2..10).map { page ->
+                        async {
+                            try {
+                                val nextPageText = app.get("$apiUrl/tag/$tagSlug/$page", headers = defaultHeaders).text
+                                jsonMapper.readValue<TagDetailResponse>(nextPageText).items ?: emptyList()
+                            } catch (_: Exception) {
+                                emptyList()
+                            }
+                        }
+                    }.awaitAll()
+                }
+                for (pageList in additionalPages) {
+                    if (pageList.isNotEmpty()) {
+                        allTagItems.addAll(pageList)
+                    }
+                }
+            }
+
+            val perSeason = 50
+            val episodes = allTagItems.filter { it.is_video != false }.mapIndexedNotNull { index, media ->
+                val mediaId = media.id ?: return@mapIndexedNotNull null
+                val title = media.caption_title?.trim().takeUnless { it.isNullOrBlank() } ?: "Video #${index + 1}"
+                val poster = media.thumbnail_path?.let { fixUrlNull("$cdnUrl/$it") }
+                val streamUrl = media.file_path?.let { "$cdnUrl/$it" } ?: "$mainUrl/${media.profile?.username ?: "user"}/$mediaId"
+
+                val seasonNum = (index / perSeason) + 1
+                val episodeNum = (index % perSeason) + 1
+
+                newEpisode(streamUrl) {
+                    this.name = title
+                    this.season = seasonNum
+                    this.episode = episodeNum
+                    this.posterUrl = poster
+                    media.duration?.let { dur ->
+                        this.description = "Duration: ${dur}s"
+                    }
+                }
+            }
+
+            val maxSeason = if (episodes.isEmpty()) 1 else (episodes.size - 1) / perSeason + 1
+            val seasonNamesList = (1..maxSeason).map { s ->
+                val start = (s - 1) * perSeason + 1
+                val end = minOf(s * perSeason, episodes.size)
+                SeasonData(s, "Season $s ($start-$end)")
+            }
+
+            val tagTitle = tagSlug.replace("-", " ").split(" ").joinToString(" ") { word ->
+                word.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+            }
+
+            return newTvSeriesLoadResponse(tagTitle, url, TvType.NSFW, episodes) {
+                this.posterHeaders = defaultHeaders
+                this.seasonNames = seasonNamesList
+                this.plot = "Tag: $tagTitle (${tagData.media_count ?: episodes.size} videos)"
+            }
+        }
+
         val isProfileUrl = url.contains("/Videos", ignoreCase = true) ||
                 url.contains("/Photos", ignoreCase = true) ||
                 url.contains("/All", ignoreCase = true) ||
@@ -349,6 +514,14 @@ data class ProfileDetailResponse(
 data class ProfileDetailNextPage(
     val medias: List<MediaItem>? = null,
     val page: Int? = null
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class TagDetailResponse(
+    val slug: String? = null,
+    val family: String? = null,
+    val media_count: Long? = null,
+    val items: List<MediaItem>? = null
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)
