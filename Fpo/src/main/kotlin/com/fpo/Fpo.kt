@@ -26,16 +26,24 @@ class Fpo : MainAPI() {
         val section = request.data
         val url = when {
             section.isEmpty() -> {
-                if (page > 1) return newHomePageResponse(request.name, emptyList())
-                "$mainUrl/"
+                if (page <= 1) "$mainUrl/" else "$mainUrl/?from=$page"
             }
-            page == 1 -> "$mainUrl/$section"
+            page <= 1 -> "$mainUrl/$section"
             else -> "$mainUrl/$section$page/"
         }
 
         val document = app.get(url, headers = mapOf("User-Agent" to userAgent)).document
         val items = document.select("div.item").mapNotNull { it.toSearchResult() }
-        return newHomePageResponse(request.name, items)
+        val hasNext = items.isNotEmpty() && (document.selectFirst("div.pagination li.next a, div.pagination a:contains(Next)") != null || items.size >= 10)
+
+        return newHomePageResponse(
+            HomePageList(
+                name = request.name,
+                list = items,
+                isHorizontalImages = true
+            ),
+            hasNext = hasNext
+        )
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
@@ -67,11 +75,17 @@ class Fpo : MainAPI() {
         }
     }
 
-    override suspend fun search(query: String): List<SearchResponse> {
+    override suspend fun search(query: String, page: Int): SearchResponseList {
         val cleanQuery = query.trim().replace(" ", "+")
-        val url = "$mainUrl/search/?q=$cleanQuery"
+        val url = if (page <= 1) "$mainUrl/search/?q=$cleanQuery" else "$mainUrl/search/$cleanQuery/$page/"
         val document = app.get(url, headers = mapOf("User-Agent" to userAgent)).document
-        return document.select("div.item").mapNotNull { it.toSearchResult() }
+        val items = document.select("div.item").mapNotNull { it.toSearchResult() }
+        val hasNext = items.isNotEmpty() && (document.selectFirst("div.pagination li.next a, div.pagination a:contains(Next)") != null || items.size >= 10)
+        return newSearchResponseList(items, hasNext = hasNext)
+    }
+
+    override suspend fun search(query: String): List<SearchResponse> {
+        return search(query, 1).items
     }
 
     override suspend fun load(url: String): LoadResponse {
