@@ -147,7 +147,8 @@ class Kisskh : MainAPI() {
 
                 newEpisode(epData) {
                     val formattedNum = if (epNum % 1.0 == 0.0) epNum.toInt().toString() else epNum.toString()
-                    this.name = "Episode $formattedNum"
+                    val isUpcoming = drama.status?.equals("Upcoming", ignoreCase = true) == true
+                    this.name = if (isUpcoming) "Episode $formattedNum (Coming Soon)" else "Episode $formattedNum"
                     this.episode = epNum.toInt()
                     this.posterUrl = poster
                 }
@@ -181,74 +182,87 @@ class Kisskh : MainAPI() {
             ?: return false
 
         val videoKkey = KisskhHelper.getKkey(episodeId, isSub = false)
+            ?: throw ErrorLoadingException("Gagal mengenerate token keamanan pemutar.")
         val subKkey = KisskhHelper.getKkey(episodeId, isSub = true)
 
-        if (!videoKkey.isNullOrBlank()) {
-            try {
-                val streamApiUrl =
-                    "$mainUrl/api/DramaList/Episode/$episodeId.png?err=false&ts=null&time=null&kkey=$videoKkey"
-                val streamRes = app.get(
-                    streamApiUrl,
-                    headers = mapOf(
-                        "User-Agent" to USER_AGENT,
-                        "Referer" to "$mainUrl/",
-                        "Accept" to "application/json, text/plain, */*"
-                    )
-                ).text
+        val streamApiUrl =
+            "$mainUrl/api/DramaList/Episode/$episodeId.png?err=false&ts=null&time=null&kkey=$videoKkey"
+        val streamRes = app.get(
+            streamApiUrl,
+            headers = mapOf(
+                "User-Agent" to USER_AGENT,
+                "Referer" to "$mainUrl/",
+                "Accept" to "application/json, text/plain, */*"
+            )
+        ).text
 
-                val videoObj = tryParseJson<VideoResponse>(streamRes)
-                val videoUrl = videoObj?.Video
+        val videoObj = tryParseJson<VideoResponse>(streamRes)
+            ?: throw ErrorLoadingException("Respon video kosong dari Kisskh.")
 
-                if (!videoUrl.isNullOrBlank()) {
-                    if (videoUrl.contains(".m3u8")) {
-                        val m3u8Links = try {
-                            M3u8Helper.generateM3u8(
-                                source = name,
-                                streamUrl = videoUrl,
-                                referer = "$mainUrl/",
-                                headers = mapOf("Referer" to "$mainUrl/")
-                            )
-                        } catch (_: Throwable) {
-                            emptyList()
-                        }
+        val videoUrl = videoObj.Video
+        val videoTmp = videoObj.Video_tmp
+        val isCountdown = videoObj.Type == 2 || videoUrl?.contains("tickcounter") == true
 
-                        if (m3u8Links.isNotEmpty()) {
-                            m3u8Links.forEach(callback)
-                        } else {
-                            callback(
-                                newExtractorLink(
-                                    source = name,
-                                    name = "$name - Auto",
-                                    url = videoUrl,
-                                    type = ExtractorLinkType.M3U8
-                                ) {
-                                    this.referer = "$mainUrl/"
-                                    this.quality = Qualities.Unknown.value
-                                }
-                            )
-                        }
-                    } else {
-                        callback(
-                            newExtractorLink(
-                                source = name,
-                                name = name,
-                                url = videoUrl,
-                                type = ExtractorLinkType.VIDEO
-                            ) {
-                                this.referer = "$mainUrl/"
-                                this.quality = Qualities.Unknown.value
-                            }
-                        )
+        if (isCountdown) {
+            throw ErrorLoadingException("Episode ini belum dirilis oleh Kisskh (Coming Soon / Masa Countdown).")
+        }
+
+        val streamHeaders = mapOf(
+            "Origin" to "https://kisskh.co",
+            "Referer" to "https://kisskh.co/",
+            "User-Agent" to USER_AGENT
+        )
+
+        if (!videoUrl.isNullOrBlank() && (videoUrl.startsWith("http") || videoUrl.startsWith("//"))) {
+            val fixedVideoUrl = fixUrl(videoUrl)
+            if (fixedVideoUrl.contains(".m3u8")) {
+                callback(
+                    newExtractorLink(
+                        source = name,
+                        name = "$name - HLS",
+                        url = fixedVideoUrl,
+                        type = ExtractorLinkType.M3U8
+                    ) {
+                        this.referer = "https://kisskh.co/"
+                        this.headers = streamHeaders
+                        this.quality = Qualities.Unknown.value
                     }
-                }
-
-                val thirdParty = videoObj?.ThirdParty
-                if (!thirdParty.isNullOrBlank()) {
-                    loadExtractor(thirdParty, referer = "$mainUrl/", subtitleCallback, callback)
-                }
-            } catch (e: Throwable) {
-                e.printStackTrace()
+                )
+            } else {
+                callback(
+                    newExtractorLink(
+                        source = name,
+                        name = name,
+                        url = fixedVideoUrl,
+                        type = ExtractorLinkType.VIDEO
+                    ) {
+                        this.referer = "https://kisskh.co/"
+                        this.headers = streamHeaders
+                        this.quality = Qualities.Unknown.value
+                    }
+                )
             }
+        }
+
+        if (!videoTmp.isNullOrBlank() && (videoTmp.startsWith("http") || videoTmp.startsWith("//")) && videoTmp != videoUrl) {
+            val fixedTmpUrl = fixUrl(videoTmp)
+            callback(
+                newExtractorLink(
+                    source = name,
+                    name = "$name - Backup HLS",
+                    url = fixedTmpUrl,
+                    type = ExtractorLinkType.M3U8
+                ) {
+                    this.referer = "https://kisskh.co/"
+                    this.headers = streamHeaders
+                    this.quality = Qualities.Unknown.value
+                }
+            )
+        }
+
+        val thirdParty = videoObj.ThirdParty
+        if (!thirdParty.isNullOrBlank()) {
+            loadExtractor(thirdParty, referer = "$mainUrl/", subtitleCallback, callback)
         }
 
         if (!subKkey.isNullOrBlank()) {
