@@ -1,0 +1,8 @@
+{
+  "name": "CloudRepo",
+  "description": "CloudStream Extensions by dhamarar",
+  "manifestVersion": 1,
+  "pluginLists": [
+    "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/plugins.json"
+  ]
+}

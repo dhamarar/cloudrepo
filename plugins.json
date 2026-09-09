@@ -1,0 +1,84 @@
+[
+    {
+        "fileHash": "sha256-9a05d5f0a6bc990224a5ff5c587c47e87c0f6f6431cf7c6fa393f6c1d0c12ffe",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
+        "fileSize": 164128,
+        "status": 2,
+        "language": "en",
+        "authors": [
+            "Cinejoy"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "version": 4,
+        "internalName": "Cinejoy",
+        "description": "Cinejoy - Watch Free Movies & TV Shows",
+        "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/Cinejoy.cs3",
+        "name": "Cinejoy"
+    },
+    {
+        "iconUrl": "https://www.fpo.xxx/favicon.ico",
+        "fileHash": "sha256-2c6e90c5d0a80af88e51910e7dae1ba88fb603f8839b361be10435e3651d52e4",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
+        "fileSize": 17645,
+        "status": 2,
+        "language": "en",
+        "authors": [
+            "dhamarar"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 3,
+        "internalName": "Fpo",
+        "description": "FPO - Free streaming videos provider",
+        "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/Fpo.cs3",
+        "name": "Fpo"
+    },
+    {
+        "fileHash": "sha256-a326b2277e949db22d0246317052c483ddc639cb82dc5c5592bd264bc40d1c8c",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
+        "fileSize": 30366,
+        "status": 2,
+        "language": "id",
+        "authors": [
+            "asm0d3usx"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Movie",
+            "Anime"
+        ],
+        "version": 2,
+        "internalName": "Kisskh",
+        "description": "Kisskh - Asian Dramas, Movies, Anime",
+        "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/Kisskh.cs3",
+        "name": "Kisskh"
+    },
+    {
+        "iconUrl": "https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://www.pornhub.com/&size=128",
+        "fileHash": "sha256-3000368ad1fd445a5a4a525c187ea07d43d4a1e13d3cdff191dcf72727626a50",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
+        "fileSize": 25089,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "kraptor"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 6,
+        "internalName": "PornHub",
+        "description": "Welcome to Pornhub.com, home of the best hardcore free porn videos with the hottest adult stars. Get full length scenes from your favorite porn studios 24/7!",
+        "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/PornHub.cs3",
+        "name": "PornHub"
+    }
+]
