@@ -301,7 +301,77 @@ class Cinejoy : MainAPI() {
 
         if (tmdbId.isBlank()) return false
 
-        // 1. Ekstraksi Subtitle via Stremio OpenSubtitles
+        // 1. Ekstraksi Native Cinejoy Servers via CinejoyExtractor (Lisbon, Nebula, Solara, Canaias, dll.)
+        val servers = listOf("lisbon", "nebula", "solara", "canaias", "athens", "joy", "castle", "sakura")
+        servers.amap { server ->
+            try {
+                val json = CinejoyExtractor.queryServer(server, isTv, tmdbId, season, episode) ?: return@amap
+                val dataObj = json.optJSONObject("data") ?: return@amap
+                val streamArr = dataObj.optJSONArray("stream") ?: JSONArray()
+
+                for (i in 0 until streamArr.length()) {
+                    val streamObj = streamArr.optJSONObject(i) ?: continue
+                    val type = streamObj.optString("type")
+                    val id = streamObj.optString("id", server)
+                    val playlist = streamObj.optString("playlist")
+
+                    // Subtitle / Captions bawaan server
+                    val captions = streamObj.optJSONArray("captions") ?: JSONArray()
+                    for (c in 0 until captions.length()) {
+                        val cap = captions.optJSONObject(c) ?: continue
+                        val subUrl = cap.optString("url")
+                        val subLang = cap.optString("language", cap.optString("id", "en"))
+                        if (subUrl.isNotBlank()) {
+                            subtitleCallback(
+                                newSubtitleFile(
+                                    subLang,
+                                    fixUrl(subUrl)
+                                )
+                            )
+                        }
+                    }
+
+                    if (type == "hls" && playlist.isNotBlank()) {
+                        val streamHeaders = mapOf(
+                            "Origin" to "https://cinejoy.to",
+                            "Referer" to "https://cinejoy.to/",
+                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+                        )
+                        M3u8Helper.generateM3u8(
+                            source = "Cinejoy - ${server.replaceFirstChar { it.uppercase() }}",
+                            streamUrl = playlist,
+                            referer = "https://cinejoy.to/",
+                            headers = streamHeaders
+                        ).forEach(callback)
+                    } else if (type == "file") {
+                        val qualities = streamObj.optJSONObject("qualities")
+                        if (qualities != null) {
+                            val keys = qualities.keys()
+                            while (keys.hasNext()) {
+                                val qKey = keys.next()
+                                val qObj = qualities.optJSONObject(qKey)
+                                val qUrl = qObj?.optString("url")
+                                if (!qUrl.isNullOrBlank() && qUrl.startsWith("http")) {
+                                    callback(
+                                        newExtractorLink(
+                                            source = "Cinejoy - ${server.replaceFirstChar { it.uppercase() }}",
+                                            name = "Cinejoy - ${server.replaceFirstChar { it.uppercase() }} $qKey",
+                                            url = qUrl,
+                                            type = ExtractorLinkType.VIDEO
+                                        ) {
+                                            this.quality = getQualityFromName(qKey)
+                                            this.referer = "https://cinejoy.to/"
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+
+        // 2. Ekstraksi Subtitle via Stremio OpenSubtitles v3 (Fallback/Tambahan)
         try {
             val extUrl = "$tmdbBase/${if (isTv) "tv" else "movie"}/$tmdbId/external_ids?api_key=$tmdbKey"
             val extRes = app.get(extUrl).text
@@ -333,40 +403,9 @@ class Cinejoy : MainAPI() {
                     }
                 }
             }
-        } catch (_: Exception) {
-            // Subtitle fallback
-        }
-
-        // 2. Ekstraksi Video Streaming Multi-Server
-        val embedServers = if (isTv) {
-            listOf(
-                "https://vidsrc.to/embed/tv/$tmdbId/$season/$episode",
-                "https://autoembed.to/tv/tmdb/$tmdbId-$season-$episode",
-                "https://multiembed.mov/?video_id=$tmdbId&tmdb=1&s=$season&e=$episode",
-                "https://2embed.to/embed/tmdb/tv?id=$tmdbId&s=$season&e=$episode",
-                "https://vidlink.pro/tv/$tmdbId/$season/$episode"
-            )
-        } else {
-            listOf(
-                "https://vidsrc.to/embed/movie/$tmdbId",
-                "https://autoembed.to/movie/tmdb/$tmdbId",
-                "https://multiembed.mov/?video_id=$tmdbId&tmdb=1",
-                "https://2embed.to/embed/tmdb/movie?id=$tmdbId",
-                "https://vidlink.pro/movie/$tmdbId"
-            )
-        }
-
-        embedServers.amap { serverUrl ->
-            try {
-                loadExtractor(
-                    url = serverUrl,
-                    referer = "$mainUrl/",
-                    subtitleCallback = subtitleCallback,
-                    callback = callback
-                )
-            } catch (_: Exception) {}
-        }
+        } catch (_: Exception) {}
 
         return true
     }
+
 }
