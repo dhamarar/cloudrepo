@@ -193,6 +193,30 @@ class LeakGallery : MainAPI() {
                 this.posterUrl = poster
                 this.posterHeaders = defaultHeaders
             }
+        }.sortedByDescending { it.name.equals(cleanQuery, ignoreCase = true) }.toMutableList()
+
+        // Fallback: Jika tidak ada hasil exact match atau pencarian kosong, cek langsung ke endpoint profil
+        if (cleanQuery.isNotBlank() && results.none { it.name.equals(cleanQuery, ignoreCase = true) }) {
+            try {
+                val directProfileText = app.get(
+                    "$apiUrl/profile/$cleanQuery?type=Videos&sort=MostRecent&fake=false",
+                    headers = defaultHeaders
+                ).text
+                val directProfile = jsonMapper.readValue<ProfileDetailResponse>(directProfileText)
+                val prof = directProfile.profile
+                if (prof != null && !prof.username.isNullOrBlank()) {
+                    val directUsername = prof.username.trim()
+                    val directUrl = "$mainUrl/$directUsername/Videos"
+                    val directPoster = prof.profile_pic?.let { fixUrlNull(it) }
+                    results.add(
+                        0,
+                        newTvSeriesSearchResponse(directUsername, directUrl, TvType.NSFW) {
+                            this.posterUrl = directPoster
+                            this.posterHeaders = defaultHeaders
+                        }
+                    )
+                }
+            } catch (_: Exception) {}
         }
 
         return newSearchResponseList(results, hasNext = false)
@@ -370,14 +394,35 @@ class LeakGallery : MainAPI() {
                 val streamUrl = media.file_path?.let { "$cdnUrl/$it" } ?: url
                 val poster = media.thumbnail_path?.let { fixUrlNull("$cdnUrl/$it") }
 
-                val recs = media.suggested_media?.filter { it.is_video != false }?.mapNotNull { sm ->
-                    val smId = sm.id ?: return@mapNotNull null
+                val author = media.profile?.username?.trim()
+                val profilePic = media.profile?.profile_pic?.let { fixUrlNull(it) }
+
+                val recs = mutableListOf<SearchResponse>()
+                // Tambahkan kartu Profil Creator di urutan pertama rekomendasi
+                // agar user bisa langsung klik dari halaman video untuk menuju ke Profil Creator
+                if (!author.isNullOrBlank()) {
+                    recs.add(
+                        newTvSeriesSearchResponse(
+                            "@$author (Profil Creator)",
+                            "$mainUrl/$author/Videos",
+                            TvType.NSFW
+                        ) {
+                            this.posterUrl = profilePic
+                            this.posterHeaders = defaultHeaders
+                        }
+                    )
+                }
+
+                media.suggested_media?.filter { it.is_video != false }?.forEach { sm ->
+                    val smId = sm.id ?: return@forEach
                     val smTitle = sm.caption_title?.trim().takeUnless { it.isNullOrBlank() } ?: "Video #$smId"
                     val smPoster = sm.thumbnail_path?.let { fixUrlNull("$cdnUrl/$it") }
-                    newMovieSearchResponse(smTitle, "$mainUrl/${media.profile?.username ?: "user"}/$smId", TvType.NSFW) {
-                        this.posterUrl = smPoster
-                        this.posterHeaders = defaultHeaders
-                    }
+                    recs.add(
+                        newMovieSearchResponse(smTitle, "$mainUrl/${sm.profile?.username ?: author ?: "user"}/$smId", TvType.NSFW) {
+                            this.posterUrl = smPoster
+                            this.posterHeaders = defaultHeaders
+                        }
+                    )
                 }
 
                 return newMovieLoadResponse(title, url, TvType.NSFW, streamUrl) {
@@ -387,8 +432,8 @@ class LeakGallery : MainAPI() {
                     this.duration = media.duration
                     this.tags = media.tags?.mapNotNull { it.slug }
                     this.recommendations = recs
-                    media.profile?.username?.let { author ->
-                        addActors(listOf(Actor(author, media.profile.profile_pic)))
+                    if (!author.isNullOrBlank()) {
+                        addActors(listOf(Actor(author, profilePic)))
                     }
                 }
             } catch (_: Exception) {
@@ -404,10 +449,33 @@ class LeakGallery : MainAPI() {
         val poster = fixUrlNull(document.selectFirst("meta[property='og:image']")?.attr("content"))
         val plot = document.selectFirst("meta[property='og:description']")?.attr("content")?.trim()
 
+        val fallbackAuthor = url.removePrefix("https://").removePrefix("http://")
+            .substringAfter("leakgallery.com/")
+            .substringBefore("/")
+            .trim()
+            .takeIf { it.isNotBlank() && it != "tag" && it != "popular" && it != "trending-medias" }
+
+        val fallbackRecs = mutableListOf<SearchResponse>()
+        if (fallbackAuthor != null) {
+            fallbackRecs.add(
+                newTvSeriesSearchResponse(
+                    "@$fallbackAuthor (Profil Creator)",
+                    "$mainUrl/$fallbackAuthor/Videos",
+                    TvType.NSFW
+                ) {
+                    this.posterHeaders = defaultHeaders
+                }
+            )
+        }
+
         return newMovieLoadResponse(rawTitle, url, TvType.NSFW, url) {
             this.posterUrl = poster
             this.posterHeaders = defaultHeaders
             this.plot = plot
+            this.recommendations = fallbackRecs
+            if (fallbackAuthor != null) {
+                addActors(listOf(Actor(fallbackAuthor, null)))
+            }
         }
     }
 
