@@ -62,6 +62,26 @@
         "name": "Kisskh"
     },
     {
+        "iconUrl": "https://leakgallery.com/icons/favicon-32x32.png",
+        "fileHash": "sha256-7e708b2d3dd18c8561cea8eccf4a3fe63c85cd21544a4b1ca1789f56a80c5a9a",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
+        "fileSize": 26824,
+        "status": 2,
+        "language": "en",
+        "authors": [
+            "dhamarar"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 1,
+        "internalName": "LeakGallery",
+        "description": "Leak Gallery - Free streaming OnlyFans leaks videos provider",
+        "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/LeakGallery.cs3",
+        "name": "LeakGallery"
+    },
+    {
         "iconUrl": "https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://www.pornhub.com/&size=128",
         "fileHash": "sha256-3000368ad1fd445a5a4a525c187ea07d43d4a1e13d3cdff191dcf72727626a50",
         "apiVersion": 1,
