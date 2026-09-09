@@ -337,12 +337,17 @@ class Cinejoy : MainAPI() {
                             "Referer" to "https://cinejoy.to/",
                             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
                         )
-                        M3u8Helper.generateM3u8(
-                            source = "Cinejoy - ${server.replaceFirstChar { it.uppercase() }}",
-                            streamUrl = playlist,
-                            referer = "https://cinejoy.to/",
-                            headers = streamHeaders
-                        ).forEach(callback)
+                        callback(
+                            newExtractorLink(
+                                source = "Cinejoy - ${server.replaceFirstChar { it.uppercase() }}",
+                                name = "Cinejoy - ${server.replaceFirstChar { it.uppercase() }}",
+                                url = playlist,
+                                type = ExtractorLinkType.M3U8
+                            ) {
+                                this.referer = "https://cinejoy.to/"
+                                this.headers = streamHeaders
+                            }
+                        )
                     } else if (type == "file") {
                         val qualities = streamObj.optJSONObject("qualities")
                         if (qualities != null) {
