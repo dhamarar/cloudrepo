@@ -76,12 +76,29 @@ class Fpo : MainAPI() {
     }
 
     override suspend fun search(query: String, page: Int): SearchResponseList {
-        val cleanQuery = query.trim().replace(" ", "+")
-        val url = if (page <= 1) "$mainUrl/search/?q=$cleanQuery" else "$mainUrl/search/?q=$cleanQuery&from_videos=$page"
-        val document = app.get(url, headers = mapOf("User-Agent" to userAgent)).document
-        val items = document.select("div.item").mapNotNull { it.toSearchResult() }
-        val hasNext = items.isNotEmpty() && (document.selectFirst("div.pagination li.next a, div.pagination a:contains(Next)") != null || items.size >= 20)
-        return newSearchResponseList(items, hasNext = hasNext)
+        val cleanQuery = java.net.URLEncoder.encode(query.trim(), "UTF-8")
+        val startWebPage = (page - 1) * 2 + 1
+        val pages = listOf(startWebPage, startWebPage + 1)
+
+        val results = pages.amap { p ->
+            val url = if (p <= 1) "$mainUrl/search/?q=$cleanQuery" else "$mainUrl/search/?q=$cleanQuery&from_videos=$p"
+            try {
+                val document = app.get(url, headers = mapOf("User-Agent" to userAgent)).document
+                val items = document.select("div.item").mapNotNull { it.toSearchResult() }
+                val hasNext = items.isNotEmpty() && (
+                    document.selectFirst("div.pagination li.next a, div.pagination a:contains(Next)") != null ||
+                    items.size >= 20
+                )
+                Pair(items, hasNext)
+            } catch (e: Exception) {
+                Pair(emptyList<SearchResponse>(), false)
+            }
+        }
+
+        val allItems = results.flatMap { it.first }.distinctBy { it.url }
+        val hasNext = (results.lastOrNull()?.second == true) && allItems.isNotEmpty()
+
+        return newSearchResponseList(allItems, hasNext = hasNext)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
