@@ -77,16 +77,18 @@ class Fpo : MainAPI() {
 
     override suspend fun search(query: String, page: Int): SearchResponseList {
         val cleanQuery = query.trim().replace(" ", "+")
-        val url = if (page <= 1) "$mainUrl/search/?q=$cleanQuery" else "$mainUrl/search/$cleanQuery/$page/"
+        val url = if (page <= 1) "$mainUrl/search/?q=$cleanQuery" else "$mainUrl/search/?q=$cleanQuery&from_videos=$page"
         val document = app.get(url, headers = mapOf("User-Agent" to userAgent)).document
         val items = document.select("div.item").mapNotNull { it.toSearchResult() }
-        val hasNext = items.isNotEmpty() && (document.selectFirst("div.pagination li.next a, div.pagination a:contains(Next)") != null || items.size >= 10)
+        val hasNext = items.isNotEmpty() && (document.selectFirst("div.pagination li.next a, div.pagination a:contains(Next)") != null || items.size >= 20)
         return newSearchResponseList(items, hasNext = hasNext)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
         return search(query, 1).items
     }
+
+    override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query, 1).items
 
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url, headers = mapOf("User-Agent" to userAgent)).document
