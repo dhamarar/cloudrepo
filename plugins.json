@@ -63,10 +63,10 @@
     },
     {
         "iconUrl": "https://leakgallery.com/icons/favicon-32x32.png",
-        "fileHash": "sha256-c24f135eaf30ff36e0f341a9d0a95cf7ec5aaba3fba7fff738c1c8007cb48b29",
+        "fileHash": "sha256-a3e51945e6aafb3a40e1462360e4c9a3d7736c00e45346840a537157edd702c2",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
-        "fileSize": 37286,
+        "fileSize": 40381,
         "status": 2,
         "language": "en",
         "authors": [
@@ -75,7 +75,7 @@
         "tvTypes": [
             "NSFW"
         ],
-        "version": 3,
+        "version": 4,
         "internalName": "LeakGallery",
         "description": "Leak Gallery - Free streaming OnlyFans leaks videos provider",
         "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/LeakGallery.cs3",
