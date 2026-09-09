@@ -47,6 +47,8 @@ jobs:
       - name: Prepare Builds Branch Files
         run: |
           mkdir -p builds
+          # Remove old .cs3 files so deleted plugins are cleaned up
+          rm -f builds/*.cs3
           # Copy all generated .cs3 files
           find src -name "*.cs3" -exec cp -v {} builds/ \;
           
