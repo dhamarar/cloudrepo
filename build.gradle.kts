@@ -36,9 +36,9 @@ subprojects {
 
     cloudstream {
         val repo = System.getenv("GITHUB_REPOSITORY")?.let { "https://github.com/$it" } 
-            ?: "https://github.com/pjubojonegoro/cloudrepo"
+            ?: "https://github.com/dhamarar/cloudrepo"
         setRepo(repo)
-        authors = listOf("pjubojonegoro")
+        authors = listOf("dhamarar")
     }
 
     android {

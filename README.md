@@ -23,8 +23,8 @@
 2. Masuk ke menu **"Pengaturan"** > **"Ekstensi"**  
 3. Klik tombol **"Tambahkan Repositori"**  
 4. Masukkan URL repositori:  
-   - `https://raw.githubusercontent.com/pjubojonegoro/cloudrepo/builds/repo.json`  
-   - atau `https://raw.githubusercontent.com/pjubojonegoro/cloudrepo/builds/plugins.json`  
+   - `https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/repo.json`  
+   - atau `https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/plugins.json`  
 5. Klik **"Tambahkan"**  
 6. Ekstensi yang tersedia akan muncul di daftar  
 7. Pilih ekstensi (misal: **Cinejoy**) dan klik **"Instal"** ✅  

@@ -61,7 +61,7 @@ jobs:
           cat << 'EOF' > builds/repo.json
           {
             "name": "CloudRepo",
-            "description": "CloudStream Extensions by pjubojonegoro",
+            "description": "CloudStream Extensions by dhamarar",
             "manifestVersion": 1,
             "pluginLists": [
               "https://raw.githubusercontent.com/${{ github.repository }}/builds/plugins.json"

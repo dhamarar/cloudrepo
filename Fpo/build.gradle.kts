@@ -1,7 +1,7 @@
 version = 3
 
 cloudstream {
-    authors     = listOf("pjubojonegoro")
+    authors     = listOf("dhamarar")
     language    = "en"
     description = "FPO - Free streaming videos provider"
     status      = 2
