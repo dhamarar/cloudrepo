@@ -1,0 +1,79 @@
+name: Build and Deploy Plugins
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          path: 'src'
+
+      - name: Checkout builds branch
+        uses: actions/checkout@v4
+        with:
+          ref: 'builds'
+          path: 'builds'
+        continue-on-error: true
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build Plugins & Manifest
+        run: |
+          cd src
+          chmod +x gradlew
+          ./gradlew makePluginsJson
+
+      - name: Prepare Builds Branch Files
+        run: |
+          mkdir -p builds
+          # Copy all generated .cs3 files
+          find src -name "*.cs3" -exec cp -v {} builds/ \;
+          
+          # Copy plugins.json
+          if [ -f src/build/plugins.json ]; then
+            cp -v src/build/plugins.json builds/plugins.json
+          fi
+
+          # Create repo.json for CloudStream
+          cat << 'EOF' > builds/repo.json
+          {
+            "name": "CloudRepo",
+            "description": "CloudStream Extensions by pjubojonegoro",
+            "manifestVersion": 1,
+            "pluginLists": [
+              "https://raw.githubusercontent.com/${{ github.repository }}/builds/plugins.json"
+            ]
+          }
+          EOF
+
+      - name: Push to builds branch
+        run: |
+          cd builds
+          git init
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B builds
+          git add .
+          git commit -m "Auto-build plugins: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" || echo "No changes to commit"
+          git push -f https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git builds
