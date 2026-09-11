@@ -102,10 +102,10 @@
         "name": "PornHub"
     },
     {
-        "fileHash": "sha256-6efe6a8876e053fbbaf751356836ca771fbeac886dc7a8ef0093a9159d6517d4",
+        "fileHash": "sha256-9609ee4b69ea8b2c83a3e1a9e382d554c4e9b22d9fb3db4172f4ae04d7fd68e2",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
-        "fileSize": 29539,
+        "fileSize": 31188,
         "status": 2,
         "language": "en",
         "authors": [
@@ -114,7 +114,7 @@
         "tvTypes": [
             "Live"
         ],
-        "version": 1,
+        "version": 2,
         "internalName": "Streamed",
         "description": "Streamed - Football & Motor Sports Live Streaming",
         "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/Streamed.cs3",
