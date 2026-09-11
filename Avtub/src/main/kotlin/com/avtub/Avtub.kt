@@ -31,6 +31,10 @@ class Avtub : MainAPI() {
         return newHomePageResponse(request.name, items)
     }
 
+    companion object {
+        private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+
     private fun Element.toSearchResult(): SearchResponse? {
         val a = selectFirst("a") ?: return null
         val href = fixUrlNull(a.attr("href")) ?: return null
@@ -41,11 +45,21 @@ class Avtub : MainAPI() {
         if (title.isBlank()) return null
 
         val img = selectFirst("img")
-        val poster = fixUrlNull(img?.attr("data-src") ?: img?.attr("data-lazy-src") ?: img?.attr("src"))
+        val poster = fixUrlNull(
+            attr("data-main-thumb").takeIf { it.isNotBlank() }
+                ?: img?.attr("data-src")?.takeIf { it.isNotBlank() }
+                ?: img?.attr("data-lazy-src")?.takeIf { it.isNotBlank() }
+                ?: img?.attr("data-original")?.takeIf { it.isNotBlank() }
+                ?: img?.attr("src")?.takeIf { it.isNotBlank() && !it.startsWith("data:") }
+        )
         val quality = selectFirst(".hd-video")?.text()?.trim().orEmpty()
 
         return newMovieSearchResponse(title, href, TvType.NSFW) {
             this.posterUrl = poster
+            this.posterHeaders = mapOf(
+                "Referer" to "$mainUrl/",
+                "User-Agent" to USER_AGENT
+            )
             if (quality.isNotEmpty()) addQuality(quality)
         }
     }
@@ -63,8 +77,12 @@ class Avtub : MainAPI() {
             ?: "AVTub Video"
 
         val poster = fixUrlNull(
-            document.selectFirst("meta[itemprop=thumbnailUrl]")?.attr("content")
-                ?: document.selectFirst(".post-thumbnail img, .video-player img")?.attr("src")
+            document.selectFirst("meta[itemprop=thumbnailUrl]")?.attr("content")?.takeIf { it.isNotBlank() }
+                ?: document.selectFirst("meta[property=og:image]")?.attr("content")?.takeIf { it.isNotBlank() }
+                ?: document.selectFirst(".post-thumbnail img, .video-player img, article img")?.let {
+                    it.attr("src").takeIf { s -> s.isNotBlank() && !s.startsWith("data:") }
+                        ?: it.attr("data-src").takeIf { s -> s.isNotBlank() }
+                }
         )
 
         val plot = document.selectFirst("meta[itemprop=description]")?.attr("content")?.trim()
@@ -76,6 +94,10 @@ class Avtub : MainAPI() {
 
         return newMovieLoadResponse(title, url, TvType.NSFW, url) {
             this.posterUrl = poster
+            this.posterHeaders = mapOf(
+                "Referer" to "$mainUrl/",
+                "User-Agent" to USER_AGENT
+            )
             this.plot = plot
             this.tags = tags
         }
