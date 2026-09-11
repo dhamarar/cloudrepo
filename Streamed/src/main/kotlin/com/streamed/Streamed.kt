@@ -1,5 +1,9 @@
 package com.streamed
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import com.fasterxml.jackson.databind.DeserializationFeature
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.fasterxml.jackson.module.kotlin.readValue
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import java.text.SimpleDateFormat
@@ -7,6 +11,47 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class Match(
+    val id: String = "",
+    val title: String = "",
+    val category: String = "",
+    val date: Long = 0L,
+    val popular: Boolean? = false,
+    val poster: String? = null,
+    val teams: Teams? = null,
+    val sources: List<SourceItem>? = null
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class Teams(
+    val home: Team? = null,
+    val away: Team? = null
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class Team(
+    val name: String? = null,
+    val badge: String? = null
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class SourceItem(
+    val source: String = "",
+    val id: String = ""
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class StreamItem(
+    val id: String? = null,
+    val streamNo: Int? = null,
+    val language: String? = null,
+    val hd: Boolean? = false,
+    val embedUrl: String? = null,
+    val source: String? = null,
+    val viewers: Int? = null
+)
 
 class Streamed : MainAPI() {
     override var mainUrl = "https://streamed.pk"
@@ -26,42 +71,17 @@ class Streamed : MainAPI() {
         "live" to "Sedang Live"
     )
 
-    // Data classes untuk Streamed API
-    data class Match(
-        val id: String = "",
-        val title: String = "",
-        val category: String = "",
-        val date: Long = 0L,
-        val popular: Boolean? = false,
-        val poster: String? = null,
-        val teams: Teams? = null,
-        val sources: List<SourceItem>? = null
-    )
+    private val jsonMapper = jacksonObjectMapper().apply {
+        configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+    }
 
-    data class Teams(
-        val home: Team? = null,
-        val away: Team? = null
-    )
-
-    data class Team(
-        val name: String? = null,
-        val badge: String? = null
-    )
-
-    data class SourceItem(
-        val source: String = "",
-        val id: String = ""
-    )
-
-    data class StreamItem(
-        val id: String? = null,
-        val streamNo: Int? = null,
-        val language: String? = null,
-        val hd: Boolean? = false,
-        val embedUrl: String? = null,
-        val source: String? = null,
-        val viewers: Int? = null
-    )
+    private inline fun <reified T> parseJson(text: String): T? {
+        return try {
+            jsonMapper.readValue<T>(text)
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     private val timeFormat24 = SimpleDateFormat("HH:mm", Locale.getDefault()).apply {
         timeZone = TimeZone.getDefault()
@@ -151,7 +171,10 @@ class Streamed : MainAPI() {
     private suspend fun fetchMatchesByCategory(category: String): List<Match> {
         return try {
             val url = "$mainUrl/api/matches/$category"
-            app.get(url).parsedSafe<List<Match>>() ?: emptyList()
+            val text = app.get(url).text
+            parseJson<List<Match>>(text)
+                ?: parseJson<Array<Match>>(text)?.toList()
+                ?: emptyList()
         } catch (_: Exception) {
             emptyList()
         }
@@ -160,7 +183,10 @@ class Streamed : MainAPI() {
     private suspend fun fetchLiveMatches(): List<Match> {
         return try {
             val url = "$mainUrl/api/matches/live"
-            val live = app.get(url).parsedSafe<List<Match>>() ?: emptyList()
+            val text = app.get(url).text
+            val live = parseJson<List<Match>>(text)
+                ?: parseJson<Array<Match>>(text)?.toList()
+                ?: emptyList()
             live.filter { it.category == "football" || it.category == "motor-sports" }
         } catch (_: Exception) {
             emptyList()
@@ -241,7 +267,9 @@ class Streamed : MainAPI() {
         sources.forEach { src ->
             try {
                 val streamUrl = "$mainUrl/api/stream/${src.source}/${src.id}"
-                val res = app.get(streamUrl).parsedSafe<List<StreamItem>>()
+                val text = app.get(streamUrl).text
+                val res = parseJson<List<StreamItem>>(text)
+                    ?: parseJson<Array<StreamItem>>(text)?.toList()
                 if (res != null) {
                     streams.addAll(res)
                 }
@@ -308,7 +336,9 @@ class Streamed : MainAPI() {
             match?.sources?.forEach { src ->
                 try {
                     val streamUrl = "$mainUrl/api/stream/${src.source}/${src.id}"
-                    val streams = app.get(streamUrl).parsedSafe<List<StreamItem>>()
+                    val text = app.get(streamUrl).text
+                    val streams = parseJson<List<StreamItem>>(text)
+                        ?: parseJson<Array<StreamItem>>(text)?.toList()
                     streams?.forEach { st ->
                         st.embedUrl?.let { embedUrl ->
                             loadExtractor(embedUrl, referer = "$mainUrl/", subtitleCallback, callback)
