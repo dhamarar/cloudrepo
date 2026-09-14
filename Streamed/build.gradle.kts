@@ -1,7 +1,7 @@
-version = 2
+version = 3
 
 cloudstream {
-    description = "Streamed - Football & Motor Sports Live Streaming"
+    description = "Streamed - Multi-Sports Live Streaming"
     language = "en"
     authors = listOf("dhamarar")
     status = 2

@@ -17,6 +17,13 @@ open class EmbedStExtractor : ExtractorApi() {
     ) {
         val cleanUrl = url.trim()
         val ref = referer ?: "https://streamed.pk/"
+        val sourceTag = when {
+            cleanUrl.contains("/admin/") -> "Admin"
+            cleanUrl.contains("/golf/") -> "Golf"
+            cleanUrl.contains("/delta/") -> "Delta"
+            cleanUrl.contains("/echo/") -> "Echo"
+            else -> Regex("""/embed/([^/]+)/""").find(cleanUrl)?.groupValues?.get(1)?.replaceFirstChar { it.uppercase() } ?: name
+        }
 
         // 1. Cek apakah ini stream golf (dapat diekstrak langsung tanpa WebView)
         if (cleanUrl.contains("/golf/")) {
@@ -24,8 +31,8 @@ open class EmbedStExtractor : ExtractorApi() {
             if (resolved != null) {
                 callback(
                     newExtractorLink(
-                        name = "$name - Golf HLS",
-                        source = name,
+                        name = "$sourceTag - HLS",
+                        source = sourceTag,
                         url = resolved,
                         type = ExtractorLinkType.M3U8
                     ) {
@@ -55,8 +62,8 @@ open class EmbedStExtractor : ExtractorApi() {
                 val isMpd = streamUrl.contains(".mpd")
                 callback(
                     newExtractorLink(
-                        name = if (isMpd) "$name - DASH" else "$name - HLS",
-                        source = name,
+                        name = if (isMpd) "$sourceTag - DASH" else "$sourceTag - HLS",
+                        source = sourceTag,
                         url = streamUrl,
                         type = if (isMpd) ExtractorLinkType.DASH else ExtractorLinkType.M3U8
                     ) {

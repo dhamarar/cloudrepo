@@ -66,9 +66,15 @@ class Streamed : MainAPI() {
 
     override val mainPage = mainPageOf(
         "all" to "Semua Jadwal",
+        "live" to "Sedang Live",
         "football" to "Sepak Bola",
         "motor-sports" to "Balap Motor",
-        "live" to "Sedang Live"
+        "american-football" to "American Football (NFL)",
+        "basketball" to "Basketball (NBA)",
+        "baseball" to "Baseball",
+        "fight" to "Fighting / UFC",
+        "tennis" to "Tennis",
+        "cricket" to "Cricket"
     )
 
     private val jsonMapper = jacksonObjectMapper().apply {
@@ -148,10 +154,10 @@ class Streamed : MainAPI() {
             return "$mainUrl/api/images/badge/$awayBadge.webp"
         }
 
-        return if (match.category == "motor-sports") {
-            "https://streamed.pk/api/images/badge/motor-sports.webp"
+        return if (!match.category.isNullOrBlank()) {
+            "$mainUrl/api/images/badge/${match.category}.webp"
         } else {
-            "https://streamed.pk/api/images/badge/football.webp"
+            "$mainUrl/api/images/badge/football.webp"
         }
     }
 
@@ -184,10 +190,9 @@ class Streamed : MainAPI() {
         return try {
             val url = "$mainUrl/api/matches/live"
             val text = app.get(url).text
-            val live = parseJson<List<Match>>(text)
+            parseJson<List<Match>>(text)
                 ?: parseJson<Array<Match>>(text)?.toList()
                 ?: emptyList()
-            live.filter { it.category == "football" || it.category == "motor-sports" }
         } catch (_: Exception) {
             emptyList()
         }
@@ -195,15 +200,9 @@ class Streamed : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val matches = when (request.data) {
-            "all" -> {
-                val football = fetchMatchesByCategory("football")
-                val motor = fetchMatchesByCategory("motor-sports")
-                (football + motor).distinctBy { it.id }
-            }
-            "football" -> fetchMatchesByCategory("football")
-            "motor-sports" -> fetchMatchesByCategory("motor-sports")
+            "all" -> fetchMatchesByCategory("all")
             "live" -> fetchLiveMatches()
-            else -> fetchMatchesByCategory("football")
+            else -> fetchMatchesByCategory(request.data)
         }
 
         // Khusus tab live, jika ada live match tampilkan langsung
@@ -238,9 +237,7 @@ class Streamed : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val cleanQuery = query.trim().lowercase(Locale.ROOT)
-        val football = fetchMatchesByCategory("football")
-        val motor = fetchMatchesByCategory("motor-sports")
-        val all = (football + motor).distinctBy { it.id }
+        val all = fetchMatchesByCategory("all")
 
         return all.filter { match ->
             match.title.lowercase(Locale.ROOT).contains(cleanQuery) ||
@@ -250,8 +247,8 @@ class Streamed : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val matchId = url.substringAfterLast("/watch/").substringBefore("?").trim()
-        val allMatches = (fetchMatchesByCategory("football") + fetchMatchesByCategory("motor-sports")).distinctBy { it.id }
+        val matchId = url.removePrefix(mainUrl).substringAfter("/watch/").substringBefore("/").substringBefore("?").trim()
+        val allMatches = fetchMatchesByCategory("all")
         val match = allMatches.firstOrNull { it.id == matchId }
             ?: fetchLiveMatches().firstOrNull { it.id == matchId }
             ?: Match(id = matchId, title = matchId)
@@ -262,32 +259,50 @@ class Streamed : MainAPI() {
         val countdown = getCountdownOrStatus(match.date)
 
         val sources = match.sources ?: emptyList()
-        val streams = mutableListOf<StreamItem>()
-
-        sources.forEach { src ->
+        val allStreams = mutableListOf<StreamItem>()
+        for (src in sources) {
             try {
                 val streamUrl = "$mainUrl/api/stream/${src.source}/${src.id}"
                 val text = app.get(streamUrl).text
                 val res = parseJson<List<StreamItem>>(text)
                     ?: parseJson<Array<StreamItem>>(text)?.toList()
                 if (res != null) {
-                    streams.addAll(res)
+                    allStreams.addAll(res.filter { !it.embedUrl.isNullOrBlank() })
                 }
             } catch (_: Exception) {}
         }
 
-        val episodes = if (streams.isNotEmpty()) {
-            streams.mapIndexed { idx, st ->
-                val epTitle = buildString {
-                    append("Stream ${st.streamNo ?: (idx + 1)}")
-                    st.source?.let { append(" • ${it.replaceFirstChar { c -> c.uppercase() }}") }
-                    st.language?.let { append(" • $it") }
-                    if (st.hd == true) append(" [HD]")
+        val episodes = if (allStreams.isNotEmpty()) {
+            val groupedStreams = allStreams.groupBy { it.streamNo ?: 1 }
+            val sortedStreamNos = groupedStreams.keys.sorted()
+
+            sortedStreamNos.map { streamNo ->
+                val itemsInStream = groupedStreams[streamNo] ?: emptyList()
+                val sourceNames = itemsInStream.mapNotNull { it.source?.replaceFirstChar { c -> c.uppercase() } }.distinct()
+                val isHd = itemsInStream.any { it.hd == true }
+                val hdTag = if (isHd) " [HD]" else ""
+                val sourceListStr = sourceNames.joinToString(", ")
+
+                val epTitle = if (sourceListStr.isNotBlank()) {
+                    "Stream $streamNo • $sourceListStr$hdTag"
+                } else {
+                    "Stream $streamNo$hdTag"
                 }
-                newEpisode(st.embedUrl ?: "") {
+
+                val epDescription = itemsInStream.joinToString("\n") { st ->
+                    val sName = st.source?.replaceFirstChar { c -> c.uppercase() } ?: "Source"
+                    val sLang = st.language?.takeIf { it.isNotBlank() }?.let { " ($it)" }.orEmpty()
+                    val sHd = if (st.hd == true) " [HD]" else ""
+                    "• $sName$sLang$sHd"
+                }
+
+                val streamJsonData = jsonMapper.writeValueAsString(itemsInStream)
+
+                newEpisode(streamJsonData) {
                     this.name = epTitle
-                    this.episode = idx + 1
+                    this.episode = streamNo
                     this.posterUrl = poster
+                    this.description = epDescription
                 }
             }
         } else {
@@ -300,13 +315,25 @@ class Streamed : MainAPI() {
             )
         }
 
+        val sportCategory = when (match.category) {
+            "football" -> "Sepak Bola"
+            "motor-sports" -> "Motorsports"
+            "american-football" -> "American Football (NFL)"
+            "basketball" -> "Basketball (NBA)"
+            "baseball" -> "Baseball"
+            "fight" -> "Fighting / UFC"
+            "tennis" -> "Tennis"
+            "cricket" -> "Cricket"
+            else -> match.category.replaceFirstChar { it.uppercase() }
+        }
+
         val plotDesc = buildString {
-            appendLine("⚽ Olahraga: ${if (match.category == "motor-sports") "Motorsports" else "Sepak Bola"}")
-            appendLine("📅 Tanggal: $fullDate")
-            appendLine("⏰ Waktu Kick-off: $time24 WIB/Lokal")
-            appendLine("⏳ Status: $countdown")
+            appendLine("Olahraga: $sportCategory")
+            appendLine("Tanggal: $fullDate")
+            appendLine("Waktu Kick-off: $time24 WIB/Lokal")
+            appendLine("Status: $countdown")
             if (sources.isNotEmpty()) {
-                appendLine("📡 Server Tersedia: ${sources.joinToString(", ") { it.source.replaceFirstChar { c -> c.uppercase() } }}")
+                appendLine("Server Tersedia: ${sources.joinToString(", ") { it.source.replaceFirstChar { c -> c.uppercase() } }}")
             }
         }
 
@@ -327,22 +354,38 @@ class Streamed : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+        if (data.startsWith("[") || data.startsWith("{")) {
+            val items = parseJson<List<StreamItem>>(data)
+                ?: parseJson<Array<StreamItem>>(data)?.toList()
+                ?: emptyList()
+
+            for (st in items) {
+                val embedUrl = st.embedUrl ?: continue
+                try {
+                    loadExtractor(embedUrl, referer = "$mainUrl/", subtitleCallback, callback)
+                } catch (_: Exception) {}
+            }
+            return true
+        }
+
         if (data.startsWith("match:")) {
             val matchId = data.removePrefix("match:")
-            val allMatches = (fetchMatchesByCategory("football") + fetchMatchesByCategory("motor-sports")).distinctBy { it.id }
+            val allMatches = fetchMatchesByCategory("all")
             val match = allMatches.firstOrNull { it.id == matchId }
                 ?: fetchLiveMatches().firstOrNull { it.id == matchId }
 
-            match?.sources?.forEach { src ->
+            val sources = match?.sources ?: emptyList()
+            for (src in sources) {
                 try {
                     val streamUrl = "$mainUrl/api/stream/${src.source}/${src.id}"
                     val text = app.get(streamUrl).text
-                    val streams = parseJson<List<StreamItem>>(text)
+                    val res = parseJson<List<StreamItem>>(text)
                         ?: parseJson<Array<StreamItem>>(text)?.toList()
-                    streams?.forEach { st ->
-                        st.embedUrl?.let { embedUrl ->
+                    res?.filter { !it.embedUrl.isNullOrBlank() }?.forEach { st ->
+                        val embedUrl = st.embedUrl ?: return@forEach
+                        try {
                             loadExtractor(embedUrl, referer = "$mainUrl/", subtitleCallback, callback)
-                        }
+                        } catch (_: Exception) {}
                     }
                 } catch (_: Exception) {}
             }
