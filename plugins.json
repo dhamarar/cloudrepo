@@ -20,10 +20,10 @@
         "name": "Avtub"
     },
     {
-        "fileHash": "sha256-9a05d5f0a6bc990224a5ff5c587c47e87c0f6f6431cf7c6fa393f6c1d0c12ffe",
+        "fileHash": "sha256-58e50be4dd3c61098cc29e2cfe014e497963feb8a944fdcc10c8f2bd00c7a0a8",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
-        "fileSize": 164128,
+        "fileSize": 166770,
         "status": 2,
         "language": "en",
         "authors": [
@@ -33,11 +33,32 @@
             "Movie",
             "TvSeries"
         ],
-        "version": 4,
+        "version": 5,
         "internalName": "Cinejoy",
         "description": "Cinejoy - Watch Free Movies & TV Shows",
         "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/Cinejoy.cs3",
         "name": "Cinejoy"
+    },
+    {
+        "fileHash": "sha256-7b4ea194b43e8e04856a2d8b77320e52ec4b60d9009c1f485a9049559ca1714a",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
+        "fileSize": 29146,
+        "status": 2,
+        "language": "id",
+        "authors": [
+            "Asm0d3usX"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "AsianDrama"
+        ],
+        "version": 2,
+        "internalName": "Dutamovie",
+        "description": "DutaMovie - Streaming Movie and TV Series",
+        "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/Dutamovie.cs3",
+        "name": "Dutamovie"
     },
     {
         "iconUrl": "https://www.fpo.xxx/favicon.ico",
@@ -58,6 +79,27 @@
         "description": "FPO - Free streaming videos provider",
         "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/Fpo.cs3",
         "name": "Fpo"
+    },
+    {
+        "fileHash": "sha256-5cd688c34358d100bd9982f4d331bedfd90747b990b7cbb4128d45370cfaa3ee",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
+        "fileSize": 22547,
+        "status": 2,
+        "language": "id",
+        "authors": [
+            "Asm0d3usX"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "AsianDrama"
+        ],
+        "version": 2,
+        "internalName": "Indomax",
+        "description": "Indomax - Streaming Movie and TV Series",
+        "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/Indomax.cs3",
+        "name": "Indomax"
     },
     {
         "fileHash": "sha256-a326b2277e949db22d0246317052c483ddc639cb82dc5c5592bd264bc40d1c8c",
@@ -102,6 +144,27 @@
         "name": "LeakGallery"
     },
     {
+        "fileHash": "sha256-f942b4716887f3ce7bd68d877266d32729472d1325c77264696d9f61213fee25",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
+        "fileSize": 19444,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "Asm0d3usX"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 1,
+        "internalName": "Nomat",
+        "description": "Nomat - Streaming Movie and TV Series",
+        "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/Nomat.cs3",
+        "name": "Nomat"
+    },
+    {
         "iconUrl": "https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://www.pornhub.com/&size=128",
         "fileHash": "sha256-3000368ad1fd445a5a4a525c187ea07d43d4a1e13d3cdff191dcf72727626a50",
         "apiVersion": 1,
@@ -120,6 +183,27 @@
         "description": "Welcome to Pornhub.com, home of the best hardcore free porn videos with the hottest adult stars. Get full length scenes from your favorite porn studios 24/7!",
         "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/PornHub.cs3",
         "name": "PornHub"
+    },
+    {
+        "fileHash": "sha256-b2c5d00284eee01d8d6070d11aaa2d8367fb790c171aba778430d46377b2ae3b",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
+        "fileSize": 20160,
+        "status": 2,
+        "language": "id",
+        "authors": [
+            "Asm0d3usX"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 2,
+        "internalName": "Pusatfilm",
+        "description": "PusatFilm - Streaming Movie and TV Series",
+        "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/Pusatfilm.cs3",
+        "name": "Pusatfilm"
     },
     {
         "fileHash": "sha256-d794bbf7ad972ab7c15d4a58c3a9a04f221d850740dc83fff58cad9ed1d5877e",
