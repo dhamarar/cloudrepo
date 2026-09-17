@@ -118,7 +118,14 @@ object CinejoyExtractor {
         return String(decrypted, StandardCharsets.UTF_8)
     }
 
-    suspend fun queryServer(server: String, isTv: Boolean, tmdbId: String, season: Int = 1, episode: Int = 1): JSONObject? {
+    suspend fun queryServer(
+        server: String,
+        isTv: Boolean,
+        tmdbId: String,
+        season: Int = 1,
+        episode: Int = 1,
+        domain: String = "https://cinejoy.pk"
+    ): JSONObject? {
         return try {
             val endpoint = if (isTv) "series" else "movie"
             val payload = if (isTv) {
@@ -131,14 +138,15 @@ object CinejoyExtractor {
             val mediaType = "application/octet-stream".toMediaTypeOrNull()
             val requestBody = sealed.body.toRequestBody(mediaType)
 
+            val cleanDomain = domain.removeSuffix("/")
             val resp = app.post(
                 "https://api.shegu.st/g",
                 requestBody = requestBody,
                 headers = mapOf(
                     "Content-Type" to "application/octet-stream",
                     "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-                    "Origin" to "https://cinejoy.to",
-                    "Referer" to "https://cinejoy.to/"
+                    "Origin" to cleanDomain,
+                    "Referer" to "$cleanDomain/"
                 )
             )
 

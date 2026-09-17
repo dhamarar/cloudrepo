@@ -9,7 +9,20 @@ import org.json.JSONArray
 import java.util.Locale
 
 class Cinejoy : MainAPI() {
-    override var mainUrl = "https://cinejoy.to"
+    companion object {
+        private const val DEFAULT_DOMAIN = "https://cinejoy.pk"
+        private val CANDIDATE_DOMAINS = listOf(
+            "https://cinejoy.pk",
+            "https://cinejoy.to",
+            "https://cinejoy.stream",
+            "https://cinejoy.lol"
+        )
+        private var cachedMainUrl: String = DEFAULT_DOMAIN
+        private var lastResolvedTime: Long = 0L
+        private const val CACHE_TTL_MS: Long = 1000L * 60 * 60 * 3 // 3 hours
+    }
+
+    override var mainUrl = DEFAULT_DOMAIN
     override var name = "Cinejoy"
     override val hasMainPage = true
     override var lang = "en"
@@ -18,6 +31,34 @@ class Cinejoy : MainAPI() {
         TvType.Movie,
         TvType.TvSeries
     )
+
+    private suspend fun resolveDomain(force: Boolean = false): String {
+        val now = System.currentTimeMillis()
+        if (!force && lastResolvedTime > 0 && (now - lastResolvedTime) < CACHE_TTL_MS) {
+            mainUrl = cachedMainUrl
+            return cachedMainUrl
+        }
+
+        val candidates = listOf(cachedMainUrl) + CANDIDATE_DOMAINS.filter { it != cachedMainUrl }
+        for (candidate in candidates) {
+            try {
+                val res = app.get(candidate, timeout = 4)
+                if (res.isSuccessful || res.code in 200..399) {
+                    val finalUrl = res.okhttpResponse.request.url
+                    val detectedDomain = "${finalUrl.scheme}://${finalUrl.host}".removeSuffix("/")
+                    if (detectedDomain.isNotBlank() && detectedDomain.startsWith("http")) {
+                        cachedMainUrl = detectedDomain
+                        lastResolvedTime = now
+                        mainUrl = detectedDomain
+                        return detectedDomain
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+
+        mainUrl = cachedMainUrl.ifBlank { DEFAULT_DOMAIN }
+        return mainUrl
+    }
 
     private val tmdbBase = "https://api.themoviedb.org/3"
     private val tmdbKey = "8476a7ab80ad76f0936744df0430e67c"
@@ -45,6 +86,7 @@ class Cinejoy : MainAPI() {
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        resolveDomain()
         val path = request.data.format(page)
         val delimiter = if (path.contains("?")) "&" else "?"
         val url = "$tmdbBase/$path${delimiter}api_key=$tmdbKey&include_adult=false"
@@ -98,6 +140,7 @@ class Cinejoy : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
+        resolveDomain()
         val encodedQuery = query.trim()
         val url = "$tmdbBase/search/multi?query=$encodedQuery&api_key=$tmdbKey&include_adult=false&page=1"
 
@@ -151,8 +194,9 @@ class Cinejoy : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val isSeries = url.contains("/series/")
-        val idRegex = Regex("""/(?:movie|series)/(\d+)""")
+        resolveDomain()
+        val isSeries = url.contains("/series/") || url.contains("/watch/tv/")
+        val idRegex = Regex("""/(?:movie|series|watch/movie|watch/tv)/(\d+)""")
         val id = idRegex.find(url)?.groupValues?.getOrNull(1)
             ?: throw ErrorLoadingException("Invalid content URL: $url")
 
@@ -285,6 +329,7 @@ class Cinejoy : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+        resolveDomain()
         val isTv = data.contains("/watch/tv/")
         var tmdbId = ""
         var season = 1
@@ -303,77 +348,93 @@ class Cinejoy : MainAPI() {
 
         // 1. Ekstraksi Native Cinejoy Servers via CinejoyExtractor (Lisbon, Nebula, Solara, Canaias, dll.)
         val servers = listOf("lisbon", "nebula", "solara", "canaias", "athens", "joy", "castle", "sakura")
-        servers.amap { server ->
-            try {
-                val json = CinejoyExtractor.queryServer(server, isTv, tmdbId, season, episode) ?: return@amap
-                val dataObj = json.optJSONObject("data") ?: return@amap
-                val streamArr = dataObj.optJSONArray("stream") ?: JSONArray()
+        var foundAnyStream = false
 
-                for (i in 0 until streamArr.length()) {
-                    val streamObj = streamArr.optJSONObject(i) ?: continue
-                    val type = streamObj.optString("type")
-                    val id = streamObj.optString("id", server)
-                    val playlist = streamObj.optString("playlist")
+        suspend fun queryServers(activeDomain: String) {
+            servers.amap { server ->
+                try {
+                    val json = CinejoyExtractor.queryServer(server, isTv, tmdbId, season, episode, domain = activeDomain) ?: return@amap
+                    val dataObj = json.optJSONObject("data") ?: return@amap
+                    val streamArr = dataObj.optJSONArray("stream") ?: JSONArray()
 
-                    // Subtitle / Captions bawaan server
-                    val captions = streamObj.optJSONArray("captions") ?: JSONArray()
-                    for (c in 0 until captions.length()) {
-                        val cap = captions.optJSONObject(c) ?: continue
-                        val subUrl = cap.optString("url")
-                        val subLang = cap.optString("language", cap.optString("id", "en"))
-                        if (subUrl.isNotBlank()) {
-                            subtitleCallback(
-                                newSubtitleFile(
-                                    subLang,
-                                    fixUrl(subUrl)
-                                )
-                            )
-                        }
-                    }
+                    for (i in 0 until streamArr.length()) {
+                        val streamObj = streamArr.optJSONObject(i) ?: continue
+                        val type = streamObj.optString("type")
+                        val id = streamObj.optString("id", server)
+                        val playlist = streamObj.optString("playlist")
 
-                    if (type == "hls" && playlist.isNotBlank()) {
-                        val streamHeaders = mapOf(
-                            "Origin" to "https://cinejoy.to",
-                            "Referer" to "https://cinejoy.to/",
-                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-                        )
-                        callback(
-                            newExtractorLink(
-                                source = "Cinejoy - ${server.replaceFirstChar { it.uppercase() }}",
-                                name = "Cinejoy - ${server.replaceFirstChar { it.uppercase() }}",
-                                url = playlist,
-                                type = ExtractorLinkType.M3U8
-                            ) {
-                                this.referer = "https://cinejoy.to/"
-                                this.headers = streamHeaders
-                            }
-                        )
-                    } else if (type == "file") {
-                        val qualities = streamObj.optJSONObject("qualities")
-                        if (qualities != null) {
-                            val keys = qualities.keys()
-                            while (keys.hasNext()) {
-                                val qKey = keys.next()
-                                val qObj = qualities.optJSONObject(qKey)
-                                val qUrl = qObj?.optString("url")
-                                if (!qUrl.isNullOrBlank() && qUrl.startsWith("http")) {
-                                    callback(
-                                        newExtractorLink(
-                                            source = "Cinejoy - ${server.replaceFirstChar { it.uppercase() }}",
-                                            name = "Cinejoy - ${server.replaceFirstChar { it.uppercase() }} $qKey",
-                                            url = qUrl,
-                                            type = ExtractorLinkType.VIDEO
-                                        ) {
-                                            this.quality = getQualityFromName(qKey)
-                                            this.referer = "https://cinejoy.to/"
-                                        }
+                        // Subtitle / Captions bawaan server
+                        val captions = streamObj.optJSONArray("captions") ?: JSONArray()
+                        for (c in 0 until captions.length()) {
+                            val cap = captions.optJSONObject(c) ?: continue
+                            val subUrl = cap.optString("url")
+                            val subLang = cap.optString("language", cap.optString("id", "en"))
+                            if (subUrl.isNotBlank()) {
+                                subtitleCallback(
+                                    newSubtitleFile(
+                                        subLang,
+                                        fixUrl(subUrl)
                                     )
+                                )
+                            }
+                        }
+
+                        if (type == "hls" && playlist.isNotBlank()) {
+                            foundAnyStream = true
+                            val streamHeaders = mapOf(
+                                "Origin" to activeDomain,
+                                "Referer" to "$activeDomain/",
+                                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+                            )
+                            callback(
+                                newExtractorLink(
+                                    source = "Cinejoy - ${server.replaceFirstChar { it.uppercase() }}",
+                                    name = "Cinejoy - ${server.replaceFirstChar { it.uppercase() }}",
+                                    url = playlist,
+                                    type = ExtractorLinkType.M3U8
+                                ) {
+                                    this.referer = "$activeDomain/"
+                                    this.headers = streamHeaders
+                                }
+                            )
+                        } else if (type == "file") {
+                            val qualities = streamObj.optJSONObject("qualities")
+                            if (qualities != null) {
+                                val keys = qualities.keys()
+                                while (keys.hasNext()) {
+                                    val qKey = keys.next()
+                                    val qObj = qualities.optJSONObject(qKey)
+                                    val qUrl = qObj?.optString("url")
+                                    if (!qUrl.isNullOrBlank() && qUrl.startsWith("http")) {
+                                        foundAnyStream = true
+                                        callback(
+                                            newExtractorLink(
+                                                source = "Cinejoy - ${server.replaceFirstChar { it.uppercase() }}",
+                                                name = "Cinejoy - ${server.replaceFirstChar { it.uppercase() }} $qKey",
+                                                url = qUrl,
+                                                type = ExtractorLinkType.VIDEO
+                                            ) {
+                                                this.quality = getQualityFromName(qKey)
+                                                this.referer = "$activeDomain/"
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
-                }
-            } catch (_: Exception) {}
+                } catch (_: Exception) {}
+            }
+        }
+
+        queryServers(mainUrl)
+
+        // Fallback otomatis jika semua server gagal pada domain saat ini
+        if (!foundAnyStream) {
+            val freshDomain = resolveDomain(force = true)
+            if (freshDomain != mainUrl) {
+                queryServers(freshDomain)
+            }
         }
 
         // 2. Ekstraksi Subtitle via Stremio OpenSubtitles v3 (Fallback/Tambahan)
