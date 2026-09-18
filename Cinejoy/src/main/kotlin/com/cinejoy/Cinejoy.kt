@@ -346,12 +346,12 @@ class Cinejoy : MainAPI() {
 
         if (tmdbId.isBlank()) return false
 
-        // 1. Ekstraksi Native Cinejoy Servers via CinejoyExtractor (Lisbon, Nebula, Solara, Canaias, dll.)
-        val servers = listOf("lisbon", "nebula", "solara", "canaias", "athens", "joy", "castle", "sakura")
+        // 1. Ekstraksi Native Cinejoy Servers via CinejoyExtractor (Lisbon, Nebula, Solara, Athens, dll.)
+        val activeServers = CinejoyExtractor.getActiveServers(mainUrl)
         var foundAnyStream = false
 
         suspend fun queryServers(activeDomain: String) {
-            servers.amap { server ->
+            activeServers.amap { server ->
                 try {
                     val json = CinejoyExtractor.queryServer(server, isTv, tmdbId, season, episode, domain = activeDomain) ?: return@amap
                     val dataObj = json.optJSONObject("data") ?: return@amap
