@@ -20,10 +20,10 @@
         "name": "Avtub"
     },
     {
-        "fileHash": "sha256-58e50be4dd3c61098cc29e2cfe014e497963feb8a944fdcc10c8f2bd00c7a0a8",
+        "fileHash": "sha256-0c888df8a13c1d941f833d6551d8fe13f74bdb62a0934b8f132b86021fe8ef3f",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
-        "fileSize": 166770,
+        "fileSize": 168412,
         "status": 2,
         "language": "en",
         "authors": [
@@ -33,7 +33,7 @@
             "Movie",
             "TvSeries"
         ],
-        "version": 5,
+        "version": 6,
         "internalName": "Cinejoy",
         "description": "Cinejoy - Watch Free Movies & TV Shows",
         "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/Cinejoy.cs3",
