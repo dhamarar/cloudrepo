@@ -101,6 +101,26 @@
         "name": "Fpo"
     },
     {
+        "iconUrl": "https://www.indoav.com/img/favicon/favicon-32x32.png",
+        "fileHash": "sha256-8cbbfc269887086353c398da712d7299da1adecc77bffb9eac23043908026bdf",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
+        "fileSize": 29504,
+        "status": 2,
+        "language": "id",
+        "authors": [
+            "CloudX"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 1,
+        "internalName": "Indoav",
+        "description": "IndoAV - Nonton video bokep Indonesia viral terbaru kualitas HD, lengkap dengan trending dan pencarian.",
+        "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/Indoav.cs3",
+        "name": "Indoav"
+    },
+    {
         "fileHash": "sha256-5cd688c34358d100bd9982f4d331bedfd90747b990b7cbb4128d45370cfaa3ee",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
