@@ -205,6 +205,26 @@
         "name": "Nomat"
     },
     {
+        "iconUrl": "https://pemersatufun.com/assets/pwa/icon-192.png",
+        "fileHash": "sha256-51bb100907a5c34eb9c1c3e717435e8b9f8cde5bb6bbf7af872c9211a92208a8",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
+        "fileSize": 19735,
+        "status": 2,
+        "language": "id",
+        "authors": [
+            "CloudX"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 1,
+        "internalName": "Pemersatufun",
+        "description": "Pemersatufun - Nonton video bokep Indo viral terbaru kualitas HD, lengkap dengan arsip malam dan pencarian.",
+        "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/Pemersatufun.cs3",
+        "name": "Pemersatufun"
+    },
+    {
         "iconUrl": "https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://www.pornhub.com/&size=128",
         "fileHash": "sha256-3000368ad1fd445a5a4a525c187ea07d43d4a1e13d3cdff191dcf72727626a50",
         "apiVersion": 1,
