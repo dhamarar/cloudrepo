@@ -199,11 +199,24 @@ class Streamed : MainAPI() {
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val matches = when (request.data) {
+        if (page > 1) {
+            return newHomePageResponse(
+                HomePageList(
+                    name = request.name,
+                    list = emptyList(),
+                    isHorizontalImages = true
+                ),
+                hasNext = false
+            )
+        }
+
+        val rawMatches = when (request.data) {
             "all" -> fetchMatchesByCategory("all")
             "live" -> fetchLiveMatches()
             else -> fetchMatchesByCategory(request.data)
         }
+
+        val matches = rawMatches.distinctBy { it.id }
 
         // Khusus tab live, jika ada live match tampilkan langsung
         if (request.data == "live") {
@@ -213,7 +226,8 @@ class Streamed : MainAPI() {
                     name = "Sedang Berlangsung (${items.size})",
                     list = items,
                     isHorizontalImages = true
-                )
+                ),
+                hasNext = false
             )
         }
 
@@ -232,14 +246,14 @@ class Streamed : MainAPI() {
             )
         }
 
-        return newHomePageResponse(homeLists)
+        return newHomePageResponse(homeLists, hasNext = false)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
         val cleanQuery = query.trim().lowercase(Locale.ROOT)
         val all = fetchMatchesByCategory("all")
 
-        return all.filter { match ->
+        return all.distinctBy { it.id }.filter { match ->
             match.title.lowercase(Locale.ROOT).contains(cleanQuery) ||
                 match.teams?.home?.name?.lowercase(Locale.ROOT)?.contains(cleanQuery) == true ||
                 match.teams?.away?.name?.lowercase(Locale.ROOT)?.contains(cleanQuery) == true
