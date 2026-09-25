@@ -245,6 +245,25 @@
         "name": "PornHub"
     },
     {
+        "fileHash": "sha256-105be992a745947b4652d0831191cb800df1c7678f12fb2d025e248b5b5fe4b3",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
+        "fileSize": 34504,
+        "status": 2,
+        "language": "en",
+        "authors": [
+            "dhamarar"
+        ],
+        "tvTypes": [
+            "Live"
+        ],
+        "version": 1,
+        "internalName": "Ppv",
+        "description": "PPV - Live Sports & Events Streaming",
+        "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/Ppv.cs3",
+        "name": "Ppv"
+    },
+    {
         "fileHash": "sha256-b2c5d00284eee01d8d6070d11aaa2d8367fb790c171aba778430d46377b2ae3b",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
@@ -283,5 +302,24 @@
         "description": "Streamed - Multi-Sports Live Streaming",
         "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/Streamed.cs3",
         "name": "Streamed"
+    },
+    {
+        "fileHash": "sha256-d7b61828496c399ec1bed8131051d54d1db2abd86e1ae6f188a8d80e98f51094",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
+        "fileSize": 32507,
+        "status": 2,
+        "language": "en",
+        "authors": [
+            "dhamarar"
+        ],
+        "tvTypes": [
+            "Live"
+        ],
+        "version": 1,
+        "internalName": "TimStreams",
+        "description": "TimStreams - Motorsport, Mixed Martial Arts, American Football & Baseball Live Streaming",
+        "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/TimStreams.cs3",
+        "name": "TimStreams"
     }
 ]
