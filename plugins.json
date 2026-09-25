@@ -321,5 +321,26 @@
         "description": "TimStreams - Motorsport, Mixed Martial Arts, American Football & Baseball Live Streaming",
         "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/TimStreams.cs3",
         "name": "TimStreams"
+    },
+    {
+        "iconUrl": "https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://watchporn.to/&size=32",
+        "fileHash": "sha256-681d88f0bb50d8098407ce34fc4e53ef35f26b1d7b1fbc8ed1eb5acaeacd1964",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
+        "fileSize": 37008,
+        "status": 2,
+        "language": "en",
+        "authors": [
+            "kraptor",
+            "dhamarar"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 1,
+        "internalName": "WatchPorn",
+        "description": "WatchPorn - High quality porn streams from major sites and categories.",
+        "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/WatchPorn.cs3",
+        "name": "WatchPorn"
     }
 ]
