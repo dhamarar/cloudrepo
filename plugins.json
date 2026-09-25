@@ -245,10 +245,10 @@
         "name": "PornHub"
     },
     {
-        "fileHash": "sha256-e5b1dff6dcb35406847e58dc966c1774ccaba5c5739efadd3fc23f4486336ce9",
+        "fileHash": "sha256-8d9c66aa9d0cbb556e8e2ee6e71a7aa307af382d0b766faef1fa40818528e8c3",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
-        "fileSize": 34811,
+        "fileSize": 34812,
         "status": 2,
         "language": "en",
         "authors": [
@@ -257,7 +257,7 @@
         "tvTypes": [
             "Live"
         ],
-        "version": 1,
+        "version": 2,
         "internalName": "Ppv",
         "description": "PPV - Live Sports & Events Streaming",
         "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/Ppv.cs3",
@@ -285,7 +285,7 @@
         "name": "Pusatfilm"
     },
     {
-        "fileHash": "sha256-6935e0c74c504ea7e03fb6cd27b71259a1200a55fac8b08b0c0bb7cb9eff4270",
+        "fileHash": "sha256-bb7e6e23f98a1216cc0a9a7b099549b05f7afc23b326e9ca754583ceb9209e9c",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
         "fileSize": 33092,
@@ -297,14 +297,14 @@
         "tvTypes": [
             "Live"
         ],
-        "version": 3,
+        "version": 4,
         "internalName": "Streamed",
         "description": "Streamed - Multi-Sports Live Streaming",
         "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/Streamed.cs3",
         "name": "Streamed"
     },
     {
-        "fileHash": "sha256-6ce230cb8f699928ed542a8860427db576fae7e74dc7e4f8bbf42f09d3dda60b",
+        "fileHash": "sha256-b205ec7188fd1f7ef3e58c29eeea4df0a44461e467834c43fd3b25b7d3aa636a",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
         "fileSize": 33027,
@@ -316,7 +316,7 @@
         "tvTypes": [
             "Live"
         ],
-        "version": 1,
+        "version": 2,
         "internalName": "TimStreams",
         "description": "TimStreams - Motorsport, Mixed Martial Arts, American Football & Baseball Live Streaming",
         "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/TimStreams.cs3",
