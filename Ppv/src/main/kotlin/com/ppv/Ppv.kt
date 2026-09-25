@@ -226,6 +226,17 @@ class Ppv : MainAPI() {
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        if (page > 1) {
+            return newHomePageResponse(
+                HomePageList(
+                    name = request.name,
+                    list = emptyList(),
+                    isHorizontalImages = true
+                ),
+                hasNext = false
+            )
+        }
+
         val groups = fetchAllGroups()
 
         if (request.data == "all") {
@@ -236,7 +247,7 @@ class Ppv : MainAPI() {
                     }.thenBy {
                         if (it.starts_at <= 0L) Long.MAX_VALUE else it.starts_at
                     }
-                )?.map { it.toSearchResult() } ?: emptyList()
+                )?.distinctBy { it.id }?.map { it.toSearchResult() } ?: emptyList()
 
                 if (items.isNotEmpty()) {
                     HomePageList(
@@ -246,7 +257,7 @@ class Ppv : MainAPI() {
                     )
                 } else null
             }
-            return newHomePageResponse(homeLists)
+            return newHomePageResponse(homeLists, hasNext = false)
         }
 
         if (request.data == "live") {
@@ -260,7 +271,8 @@ class Ppv : MainAPI() {
                     name = "Sedang Berlangsung (${allLive.size})",
                     list = allLive,
                     isHorizontalImages = true
-                )
+                ),
+                hasNext = false
             )
         }
 
@@ -273,6 +285,7 @@ class Ppv : MainAPI() {
                     if (it.starts_at <= 0L) Long.MAX_VALUE else it.starts_at
                 }
             )
+            .distinctBy { it.id }
             .map { it.toSearchResult() }
 
         return newHomePageResponse(
@@ -280,7 +293,8 @@ class Ppv : MainAPI() {
                 name = "${request.name} (${matchingStreams.size})",
                 list = matchingStreams,
                 isHorizontalImages = true
-            )
+            ),
+            hasNext = false
         )
     }
 

@@ -206,6 +206,17 @@ class TimStreams : MainAPI() {
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        if (page > 1) {
+            return newHomePageResponse(
+                HomePageList(
+                    name = request.name,
+                    list = emptyList(),
+                    isHorizontalImages = true
+                ),
+                hasNext = false
+            )
+        }
+
         val data = fetchLiveUpcoming()
         val genreMap = data.genres?.associate { it.id to it.name } ?: emptyMap()
         val allEvents = data.events ?: emptyList()
@@ -214,6 +225,7 @@ class TimStreams : MainAPI() {
             val lists = mutableListOf<HomePageList>()
             for (cat in SportCategory.values()) {
                 val catEvents = allEvents.filter { matchesCategory(it, cat, genreMap) }
+                    .distinctBy { it.url }
                     .sortedWith(
                         compareBy<TimEvent> {
                             val ms = parseEventTimeMs(it.time)
@@ -236,7 +248,7 @@ class TimStreams : MainAPI() {
                     )
                 }
             }
-            return newHomePageResponse(lists)
+            return newHomePageResponse(lists, hasNext = false)
         }
 
         val targetCat = SportCategory.values().firstOrNull { it.slug == request.data }
@@ -244,7 +256,8 @@ class TimStreams : MainAPI() {
             allEvents.filter { matchesCategory(it, targetCat, genreMap) }
         } else {
             allEvents.filter { isSupportedSport(it, genreMap) }
-        }.sortedWith(
+        }.distinctBy { it.url }
+        .sortedWith(
             compareBy<TimEvent> {
                 val ms = parseEventTimeMs(it.time)
                 val now = System.currentTimeMillis()
@@ -262,7 +275,8 @@ class TimStreams : MainAPI() {
                 name = "${request.name} (${items.size})",
                 list = items,
                 isHorizontalImages = true
-            )
+            ),
+            hasNext = false
         )
     }
 
@@ -276,7 +290,7 @@ class TimStreams : MainAPI() {
             isSupportedSport(event, genreMap) &&
                 (event.name.lowercase(Locale.ROOT).contains(cleanQuery) ||
                     event.url.lowercase(Locale.ROOT).contains(cleanQuery))
-        }.map { it.toSearchResult(genreMap) }
+        }.distinctBy { it.url }.map { it.toSearchResult(genreMap) }
     }
 
     override suspend fun load(url: String): LoadResponse {
