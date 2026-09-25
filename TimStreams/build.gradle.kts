@@ -1,4 +1,4 @@
-version = 1
+version = 2
 
 cloudstream {
     description = "TimStreams - Motorsport, Mixed Martial Arts, American Football & Baseball Live Streaming"
