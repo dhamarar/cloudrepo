@@ -5,6 +5,7 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 
 buildscript {
     repositories {
+        mavenLocal()
         google()
         mavenCentral()
         maven("https://jitpack.io")
@@ -19,6 +20,7 @@ buildscript {
 
 allprojects {
     repositories {
+        mavenLocal()
         google()
         mavenCentral()
         maven("https://jitpack.io")
