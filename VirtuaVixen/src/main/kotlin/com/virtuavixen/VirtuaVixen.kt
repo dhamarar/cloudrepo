@@ -5,6 +5,7 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
 import com.lagradost.cloudstream3.utils.*
 import org.json.JSONObject
 import org.jsoup.nodes.Element
+import java.util.UUID
 
 class VirtuaVixen : MainAPI() {
     override var mainUrl = "https://virtuavixen.com"
@@ -126,62 +127,96 @@ class VirtuaVixen : MainAPI() {
         var foundAny = false
 
         // 1. Ekstraksi dari elemen Flowplayer / FV Player data-item
-        document.select("[data-item]").forEach { el ->
+        val dataItemElements = document.select("[data-item]")
+        for (el in dataItemElements) {
             val dataItem = el.attr("data-item")
-            if (dataItem.isNotBlank() && dataItem.contains("sources")) {
-                try {
-                    val json = JSONObject(dataItem)
-                    val sources = json.optJSONArray("sources")
-                    if (sources != null) {
-                        for (i in 0 until sources.length()) {
-                            val srcObj = sources.optJSONObject(i) ?: continue
-                            val streamUrl = fixUrlNull(srcObj.optString("src")) ?: continue
-                            val type = srcObj.optString("type")
+            if (dataItem.isBlank() || !dataItem.contains("sources")) continue
 
-                            if (streamUrl.contains(".m3u8") || streamUrl.contains("stream-loader") || type.contains("mpegurl")) {
-                                var generated = false
-                                try {
-                                    M3u8Helper.generateM3u8(
-                                        source = name,
-                                        streamUrl = streamUrl,
-                                        referer = "$mainUrl/",
-                                        headers = mapOf(
-                                            "Referer" to "$mainUrl/",
-                                            "User-Agent" to USER_AGENT
-                                        )
-                                    ).forEach {
-                                        generated = true
-                                        foundAny = true
-                                        callback(it)
-                                    }
-                                } catch (_: Exception) {}
+            try {
+                val json = JSONObject(dataItem)
+                val sources = json.optJSONArray("sources") ?: continue
+                for (i in 0 until sources.length()) {
+                    val srcObj = sources.optJSONObject(i) ?: continue
+                    val streamLoaderUrl = fixUrlNull(srcObj.optString("src")) ?: continue
 
-                                if (!generated) {
-                                    foundAny = true
-                                    callback(
-                                        newExtractorLink(
-                                            source = name,
-                                            name = name,
-                                            url = streamUrl,
-                                            type = ExtractorLinkType.M3U8
-                                        ) {
-                                            this.referer = "$mainUrl/"
-                                            this.headers = mapOf(
+                    // 1a. Otentikasi FV Player anti-rip performance check
+                    try {
+                        app.post(
+                            "$mainUrl/wp-admin/admin-ajax.php",
+                            data = mapOf(
+                                "action" to "fv_player_performance",
+                                "summary" to streamLoaderUrl
+                            ),
+                            headers = mapOf(
+                                "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
+                                "X-Requested-With" to "XMLHttpRequest",
+                                "User-Agent" to USER_AGENT
+                            ),
+                            referer = data
+                        )
+                    } catch (_: Exception) {}
+
+                    // 1b. Unduh Master Playlist
+                    val masterText = app.get(
+                        streamLoaderUrl,
+                        headers = mapOf(
+                            "Referer" to "$mainUrl/",
+                            "User-Agent" to USER_AGENT
+                        )
+                    ).text
+
+                    // Temukan subplaylist (varian resolusi)
+                    val playlistMatches = Regex("""#EXT-X-STREAM-INF:.*RESOLUTION=(\d+x\d+).*\r?\n(https://[^\r\n]+)""")
+                        .findAll(masterText)
+                        .toList()
+
+                    val cachedKeys = mutableMapOf<String, ByteArray>()
+
+                    if (playlistMatches.isNotEmpty()) {
+                        for (match in playlistMatches) {
+                            val resDim = match.groupValues[1]
+                            val subUrl = match.groupValues[2]
+                            val qualityNum = getQualityFromName("${resDim.substringAfter("x")}p")
+
+                            try {
+                                val subText = app.get(
+                                    subUrl,
+                                    headers = mapOf(
+                                        "Referer" to "$mainUrl/",
+                                        "User-Agent" to USER_AGENT
+                                    )
+                                ).text
+
+                                val keyMatch = Regex("""#EXT-X-KEY:METHOD=AES-128,URI=["']([^"']+)["']""").find(subText)
+                                val keyUrl = keyMatch?.groupValues?.get(1)
+
+                                val keyBytes = if (keyUrl != null) {
+                                    cachedKeys.getOrPut(keyUrl) {
+                                        val raw = app.get(
+                                            keyUrl,
+                                            headers = mapOf(
                                                 "Referer" to "$mainUrl/",
                                                 "User-Agent" to USER_AGENT
                                             )
-                                        }
-                                    )
-                                }
-                            } else {
-                                foundAny = true
+                                        ).body.bytes()
+                                        if (raw.size > 16) raw.copyOfRange(raw.size - 16, raw.size) else raw
+                                    }
+                                } else null
+
+                                val id = UUID.randomUUID().toString()
+                                val proxiedUrl = if (keyBytes != null) {
+                                    VirtuaVixenProxy.register(id, subText, keyBytes)
+                                } else null
+
+                                val finalUrl = proxiedUrl ?: subUrl
                                 callback(
                                     newExtractorLink(
                                         source = name,
-                                        name = name,
-                                        url = streamUrl,
-                                        type = ExtractorLinkType.VIDEO
+                                        name = "$name ${resDim.substringAfter("x")}p",
+                                        url = finalUrl,
+                                        type = ExtractorLinkType.M3U8
                                     ) {
+                                        this.quality = qualityNum
                                         this.referer = "$mainUrl/"
                                         this.headers = mapOf(
                                             "Referer" to "$mainUrl/",
@@ -189,46 +224,59 @@ class VirtuaVixen : MainAPI() {
                                         )
                                     }
                                 )
-                            }
+                                foundAny = true
+                            } catch (_: Exception) {}
                         }
-                    }
-                } catch (_: Exception) {}
-            }
-        }
+                    } else {
+                        // Single playlist
+                        try {
+                            val keyMatch = Regex("""#EXT-X-KEY:METHOD=AES-128,URI=["']([^"']+)["']""").find(masterText)
+                            val keyUrl = keyMatch?.groupValues?.get(1)
+                            val keyBytes = if (keyUrl != null) {
+                                val raw = app.get(
+                                    keyUrl,
+                                    headers = mapOf(
+                                        "Referer" to "$mainUrl/",
+                                        "User-Agent" to USER_AGENT
+                                    )
+                                ).body.bytes()
+                                if (raw.size > 16) raw.copyOfRange(raw.size - 16, raw.size) else raw
+                            } else null
 
-        // 2. Fallback: Ekstraksi dari JSON-LD Schema (VideoObject)
-        if (!foundAny) {
-            document.select("script[type=application/ld+json]").forEach { script ->
-                val content = script.data()
-                if (content.contains("contentUrl")) {
-                    val contentUrl = Regex(""""contentUrl"\s*:\s*"([^"]+)"""").find(content)?.groupValues?.get(1)
-                    if (!contentUrl.isNullOrBlank()) {
-                        val cleanUrl = fixUrl(contentUrl.replace("\\/", "/"))
-                        foundAny = true
-                        callback(
-                            newExtractorLink(
-                                source = name,
-                                name = name,
-                                url = cleanUrl,
-                                type = if (cleanUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
-                            ) {
-                                this.referer = "$mainUrl/"
-                                this.headers = mapOf(
-                                    "Referer" to "$mainUrl/",
-                                    "User-Agent" to USER_AGENT
-                                )
-                            }
-                        )
+                            val id = UUID.randomUUID().toString()
+                            val proxiedUrl = if (keyBytes != null) {
+                                VirtuaVixenProxy.register(id, masterText, keyBytes)
+                            } else null
+
+                            val finalUrl = proxiedUrl ?: streamLoaderUrl
+                            callback(
+                                newExtractorLink(
+                                    source = name,
+                                    name = name,
+                                    url = finalUrl,
+                                    type = ExtractorLinkType.M3U8
+                                ) {
+                                    this.referer = "$mainUrl/"
+                                    this.headers = mapOf(
+                                        "Referer" to "$mainUrl/",
+                                        "User-Agent" to USER_AGENT
+                                    )
+                                }
+                            )
+                            foundAny = true
+                        } catch (_: Exception) {}
                     }
                 }
-            }
+            } catch (_: Exception) {}
         }
 
-        // 3. Fallback: Ekstraksi iframe (jika disematkan host eksternal)
-        document.select("iframe").forEach { iframe ->
-            val src = fixUrlNull(iframe.attr("src")) ?: return@forEach
-            val loaded = loadExtractor(src, referer = data, subtitleCallback, callback)
-            if (loaded) foundAny = true
+        // 2. Fallback: Ekstraksi iframe
+        if (!foundAny) {
+            document.select("iframe").forEach { iframe ->
+                val src = fixUrlNull(iframe.attr("src")) ?: return@forEach
+                val loaded = loadExtractor(src, referer = data, subtitleCallback, callback)
+                if (loaded) foundAny = true
+            }
         }
 
         return foundAny

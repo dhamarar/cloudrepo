@@ -15,11 +15,11 @@ Membangun ekstensi CloudStream 3 untuk situs streaming dewasa AI `virtuavixen.co
    - Judul dari `h1`, poster dari OpenGraph / Schema.org `thumbnailUrl` / `data-item` splash.
    - Sinopsis / plot dari schema description / deskripsi konten.
    - Tag dari `a[href*="/tag/"]` dan model/pemeran dari `a[href*="/model/"]`.
-4. **Ekstraksi Video (`loadLinks`)**:
-   - Video player menggunakan FV Player Pro (Flowplayer).
-   - URL stream M3U8 (`stream-loader.php`) termuat di atribut `data-item` (JSON) pada div player (`div.flowplayer` / `div[id^=wpfp_]`).
-   - M3U8 diekspansi menggunakan `M3u8Helper.generateM3u8` dengan header `Referer: https://virtuavixen.com/`.
-   - Fallback ke JSON-LD Schema `VideoObject.contentUrl` atau iframe embed jika tersedia.
+4. **Ekstraksi Video (`loadLinks`) & Proxy Kunci AES-128**:
+   - Video player menggunakan FV Player Pro (Flowplayer) terproteksi anti-rip.
+   - Melakukan otentikasi via `POST wp-admin/admin-ajax.php` dengan action `fv_player_performance` dan summary `streamLoaderUrl`.
+   - Menjalankan `VirtuaVixenProxy` lokal pada `127.0.0.1:$port` untuk menyajikan playlist yang telah disuntik kunci AES-128 16-byte asli. Hal ini mencegah ExoPlayer menerima dummy key (error `Cannot find sync byte. Most likely not a Transport Stream`) saat token satu kali pakai upstream hangus.
+   - Segmen video (.ts) tetap diunduh langsung dari CDN DigitalOcean tanpa bottleneck proxy.
 
 ## Cakupan
 - **In**:
@@ -29,7 +29,7 @@ Membangun ekstensi CloudStream 3 untuk situs streaming dewasa AI `virtuavixen.co
   - Halaman Beranda (`getMainPage`) dengan 4 section: Newest, Best Week, Best Month, Best All Time.
   - Pencarian (`search`).
   - Detail (`load`) dengan sinopsis, poster, tag, dan model.
-  - Ekstraksi video (`loadLinks`) via Flowplayer / FV Player `data-item` + `M3u8Helper`.
+  - `VirtuaVixenProxy.kt` untuk melayani kunci HLS AES-128 statis lokal.
   - Build `./gradlew VirtuaVixen:make` menghasilkan `VirtuaVixen.cs3`.
 - **Out**:
   - Fitur login VIP/unduhan berbayar khusus akun terdaftar.
@@ -42,5 +42,6 @@ Membangun ekstensi CloudStream 3 untuk situs streaming dewasa AI `virtuavixen.co
 - [x] 5. [Scaffold] Buat modul folder `cloudrepo/VirtuaVixen` dengan `build.gradle.kts` dan `AndroidManifest.xml`.
 - [x] 6. [Plugin] Buat kelas `VirtuaVixenPlugin.kt` mendaftarkan `VirtuaVixen()`.
 - [x] 7. [MainAPI] Implementasikan `VirtuaVixen.kt` (`mainUrl`, `name`, `supportedTypes`, `mainPage`, `getMainPage`, `search`, `load`, `loadLinks`).
-- [x] 8. [Build] Jalankan `.\gradlew.bat VirtuaVixen:make` di folder `cloudrepo`.
-- [x] 9. [Verifikasi] Verifikasi file `VirtuaVixen.cs3` berhasil ter-generate di `cloudrepo/VirtuaVixen/build/VirtuaVixen.cs3`.
+- [x] 8. [Fix Anti-Rip] Identifikasi kegagalan sync byte di logcat dan terapkan `fv_player_performance` + `VirtuaVixenProxy` lokal.
+- [x] 9. [Build] Jalankan `.\gradlew.bat VirtuaVixen:make` di folder `cloudrepo`.
+- [x] 10. [Verifikasi] Verifikasi file `VirtuaVixen.cs3` berhasil ter-generate di `cloudrepo/VirtuaVixen/build/VirtuaVixen.cs3`.
