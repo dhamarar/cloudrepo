@@ -324,10 +324,10 @@
     },
     {
         "iconUrl": "https://virtuavixen.com/wp-content/uploads/2025/11/virtuavixen_logo_transparent.webp",
-        "fileHash": "sha256-61f2ad0d304a5156b4b1e15cd936f33e9cff9f0d2a49fe3dfb235635792051c8",
+        "fileHash": "sha256-26e85d1f73a2c238ec3619d7fffd68b1513e40cfc2c0db6ad71a81adef817ffc",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
-        "fileSize": 16791,
+        "fileSize": 27751,
         "status": 2,
         "language": "en",
         "authors": [
@@ -336,7 +336,7 @@
         "tvTypes": [
             "NSFW"
         ],
-        "version": 1,
+        "version": 2,
         "internalName": "VirtuaVixen",
         "description": "VirtuaVixen - AI Generated Porn Videos",
         "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/VirtuaVixen.cs3",
