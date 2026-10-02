@@ -11,10 +11,12 @@ import kotlinx.coroutines.coroutineScope
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import java.net.URI
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import java.util.concurrent.ConcurrentHashMap
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class CornerEvent(
@@ -136,6 +138,7 @@ class StreamCorner : MainAPI() {
 
     private var cachedEvents: List<CornerEvent>? = null
     private var lastFetchTime = 0L
+    private val eventDetailCache = ConcurrentHashMap<String, CornerEvent>()
 
     private suspend fun postWorker(endpointParam: String, queryId: String? = null): String? {
         val payload = StreamCornerCipher.encryptRequest(endpointParam)
@@ -258,9 +261,9 @@ class StreamCorner : MainAPI() {
         val name = getDisplayName()
         val displayTitle = if (time24.isNotBlank() && countdown != "LIVE") "[$time24] $name" else name
         val poster = fixUrlNull(getPosterUrl())
-        val watchUrl = "$mainUrl/watch/$providerId/${getId()}"
+        val streamUrl = "$mainUrl/stream/$providerId/${getId()}"
 
-        return newLiveSearchResponse(displayTitle, watchUrl, TvType.Live) {
+        return newLiveSearchResponse(displayTitle, streamUrl, TvType.Live) {
             this.posterUrl = poster
             addQuality(countdown)
         }
@@ -455,20 +458,47 @@ class StreamCorner : MainAPI() {
         }.map { it.toSearchResult() }
     }
 
-    override suspend fun load(url: String): LoadResponse {
-        // Format url: https://streamcorner.st/watch/{providerId}/{id}
-        val cleanUrl = url.removePrefix(mainUrl).substringAfter("/watch/")
-        val providerId = cleanUrl.substringBefore("/").trim()
-        val id = cleanUrl.substringAfter("/").substringBefore("?").trim()
-
-        val detailEvent = try {
-            fetchEventDetail(providerId, id)
+    private fun parseProviderAndId(inputUrl: String): Pair<String, String> {
+        val path = try {
+            URI(inputUrl).path.trim('/')
         } catch (_: Exception) {
-            null
+            inputUrl.removePrefix(mainUrl).trim('/')
         }
+        val segments = path.split('/').filter { it.isNotBlank() }
+        return when {
+            segments.size >= 3 && (segments[0].equals("stream", ignoreCase = true) || segments[0].equals("watch", ignoreCase = true)) -> {
+                segments[1] to segments[2].substringBefore('?').substringBefore('#')
+            }
+            segments.size >= 2 -> {
+                segments[0] to segments[1].substringBefore('?').substringBefore('#')
+            }
+            else -> {
+                val trimmed = inputUrl.removePrefix(mainUrl).trim('/')
+                val p = trimmed.substringBefore('/')
+                val sId = trimmed.substringAfter('/').substringBefore('?').substringBefore('#')
+                p to sId
+            }
+        }
+    }
 
-        val cachedEvent = cachedEvents?.firstOrNull { it.providerId == providerId && it.getId() == id }
+    override suspend fun load(url: String): LoadResponse {
+        val (providerId, id) = parseProviderAndId(url)
+
+        val detailEvent = if (providerId.isNotBlank() && id.isNotBlank()) {
+            try {
+                fetchEventDetail(providerId, id)
+            } catch (_: Exception) {
+                null
+            }
+        } else null
+
+        val cachedEvent = cachedEvents?.firstOrNull { (providerId.isBlank() || it.providerId == providerId) && it.getId() == id }
         val event = detailEvent ?: cachedEvent ?: CornerEvent(stream_id = id, providerId = providerId)
+
+        if (id.isNotBlank()) {
+            eventDetailCache["${providerId}_$id"] = event
+            eventDetailCache[id] = event
+        }
 
         val poster = fixUrlNull(event.getPosterUrl())
         val dateMs = event.getTimestampMs()
@@ -477,50 +507,28 @@ class StreamCorner : MainAPI() {
         val fullDate = if (dateMs > 0L) SimpleDateFormat("EEEE, dd MMMM yyyy", Locale("id", "ID")).format(Date(dateMs)) else "TBA"
 
         val rawStreams = event.streams ?: cachedEvent?.streams ?: emptyList()
-        val episodes = if (rawStreams.isNotEmpty()) {
-            rawStreams.mapIndexed { idx, st ->
-                val sName = st.source_name ?: st.name ?: "Stream ${idx + 1}"
-                val streamTarget = st.stream_url ?: st.embed_url ?: ""
-                val streamData = JSONObject().apply {
-                    put("providerId", providerId)
-                    put("id", id)
-                    put("source_name", sName)
-                    put("stream_url", st.stream_url ?: "")
-                    put("embed_url", st.embed_url ?: "")
-                    put("stream_keys", st.stream_keys ?: "")
-                }.toString()
-
-                newEpisode(streamData) {
-                    this.name = sName
-                    this.episode = idx + 1
-                    this.posterUrl = poster
-                    this.description = "Server: $sName\nStatus: $countdown\nTarget: $streamTarget"
-                }
-            }
-        } else {
-            listOf(
-                newEpisode("detail:$providerId:$id") {
-                    this.name = "Direct Live Stream ($countdown)"
-                    this.episode = 1
-                    this.posterUrl = poster
-                }
-            )
-        }
 
         val plotDesc = buildString {
             if (!event.category.isNullOrBlank()) appendLine("Kategori: ${event.category}")
             if (!event.league.isNullOrBlank()) appendLine("Liga: ${event.league}")
             if (dateMs > 0L) appendLine("Tanggal: $fullDate")
-            if (time24.isNotBlank()) appendLine("Kick-off: $time24 WIB/Lokal")
+            if (time24.isNotBlank()) appendLine("Waktu: $time24 WIB/Lokal")
             appendLine("Status: $countdown")
-            if (rawStreams.isNotEmpty()) appendLine("Server Tersedia: ${rawStreams.size} Server")
+            if (rawStreams.isNotEmpty()) {
+                val serverNames = rawStreams.mapIndexed { idx, st ->
+                    st.source_name ?: st.name ?: "Server ${idx + 1}"
+                }
+                appendLine("Server Tersedia (${rawStreams.size}): ${serverNames.joinToString(", ")}")
+            }
         }
 
-        return newTvSeriesLoadResponse(
-            name = if (time24.isNotBlank() && countdown != "LIVE") "[$time24] ${event.getDisplayName()}" else event.getDisplayName(),
+        val displayTitle = if (time24.isNotBlank() && countdown != "LIVE") "[$time24] ${event.getDisplayName()}" else event.getDisplayName()
+
+        return newMovieLoadResponse(
+            name = displayTitle,
             url = url,
             type = TvType.Live,
-            episodes = episodes
+            dataUrl = url
         ) {
             this.posterUrl = poster
             this.plot = plotDesc
@@ -538,27 +546,54 @@ class StreamCorner : MainAPI() {
         val cleanData = data.trim()
         if (cleanData.isBlank()) return false
 
-        // 1. Cek apakah format JSON payload dari load()
+        var providerId = ""
+        var id = ""
+
         if (cleanData.startsWith("{") && cleanData.endsWith("}")) {
             try {
                 val json = JSONObject(cleanData)
-                val streamUrl = json.optString("stream_url").trim()
-                val embedUrl = json.optString("embed_url").trim()
-                val sourceNameRaw = json.optString("source_name")
-                val sourceName = if (sourceNameRaw.isNullOrBlank()) name else sourceNameRaw
-                val streamKeys = json.optString("stream_keys").trim()
+                providerId = json.optString("providerId")
+                id = json.optString("id").ifBlank { json.optString("stream_id") }
+            } catch (_: Exception) {}
+        } else if (cleanData.startsWith("detail:")) {
+            val parts = cleanData.split(":")
+            if (parts.size >= 3) {
+                providerId = parts[1]
+                id = parts[2]
+            }
+        } else if (cleanData.contains("streamcorner.st") || cleanData.startsWith("http://") || cleanData.startsWith("https://")) {
+            val pair = parseProviderAndId(cleanData)
+            providerId = pair.first
+            id = pair.second
+        }
 
-                // A. Direct stream_url (.m3u8 / .mpd)
+        val event = (if (id.isNotBlank()) eventDetailCache["${providerId}_$id"] ?: eventDetailCache[id] else null)
+            ?: (if (providerId.isNotBlank() && id.isNotBlank()) fetchEventDetail(providerId, id) else null)
+            ?: cachedEvents?.firstOrNull { (providerId.isBlank() || it.providerId == providerId) && it.getId() == id }
+
+        val rawStreams = event?.streams ?: emptyList()
+
+        if (rawStreams.isNotEmpty()) {
+            var anyEmitted = false
+            rawStreams.amap { st ->
+                val sName = st.source_name?.trim()?.takeIf { it.isNotBlank() }
+                    ?: st.name?.trim()?.takeIf { it.isNotBlank() }
+                    ?: "Stream"
+                val streamUrl = st.stream_url?.trim().orEmpty()
+                val embedUrl = st.embed_url?.trim().orEmpty()
+
+                // 1. Direct stream_url (.m3u8 / .mpd / direct video)
                 if (streamUrl.isNotBlank()) {
                     if (streamUrl.contains(".m3u8")) {
                         val headersMap = mapOf(
                             "Referer" to "$mainUrl/",
-                            "Origin" to mainUrl
+                            "Origin" to mainUrl,
+                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
                         )
                         var generated = false
                         try {
                             val list = M3u8Helper.generateM3u8(
-                                source = sourceName,
+                                source = sName,
                                 streamUrl = streamUrl,
                                 referer = "$mainUrl/",
                                 headers = headersMap
@@ -566,72 +601,74 @@ class StreamCorner : MainAPI() {
                             if (list.isNotEmpty()) {
                                 list.forEach(callback)
                                 generated = true
+                                anyEmitted = true
                             }
                         } catch (_: Exception) {}
 
                         if (!generated) {
                             callback(
                                 newExtractorLink(
-                                    name = "$sourceName Live HLS",
-                                    source = sourceName,
+                                    name = "$sName Live HLS",
+                                    source = sName,
                                     url = streamUrl,
                                     type = ExtractorLinkType.M3U8
                                 ) {
                                     this.referer = "$mainUrl/"
+                                    this.headers = headersMap
                                     this.quality = Qualities.P1080.value
                                 }
                             )
+                            anyEmitted = true
                         }
-                        return true
                     } else if (streamUrl.contains(".mpd")) {
                         callback(
                             newExtractorLink(
-                                name = "$sourceName Live DASH",
-                                source = sourceName,
+                                name = "$sName Live DASH",
+                                source = sName,
                                 url = streamUrl,
                                 type = ExtractorLinkType.DASH
+                            ) {
+                                this.referer = "$mainUrl/"
+                                this.headers = mapOf(
+                                    "Referer" to "$mainUrl/",
+                                    "Origin" to mainUrl
+                                )
+                                this.quality = Qualities.P1080.value
+                            }
+                        )
+                        anyEmitted = true
+                    } else {
+                        callback(
+                            newExtractorLink(
+                                name = "$sName Live",
+                                source = sName,
+                                url = streamUrl,
+                                type = ExtractorLinkType.VIDEO
                             ) {
                                 this.referer = "$mainUrl/"
                                 this.quality = Qualities.P1080.value
                             }
                         )
-                        return true
+                        anyEmitted = true
                     }
                 }
 
-                // B. Ekstraksi embed_url
-                if (embedUrl.isNotBlank()) {
-                    if (extractor.extractStream(embedUrl, "$mainUrl/", subtitleCallback, callback)) {
-                        return true
-                    }
-                }
-            } catch (_: Exception) {}
-        }
-
-        // 2. Format fallback "detail:providerId:id"
-        if (cleanData.startsWith("detail:")) {
-            val parts = cleanData.split(":")
-            if (parts.size >= 3) {
-                val prov = parts[1]
-                val id = parts[2]
-                val detail = fetchEventDetail(prov, id)
-                val streams = detail?.streams ?: emptyList()
-                var extractedAny = false
-                for (st in streams) {
-                    val stUrl = st.stream_url ?: ""
-                    val ebUrl = st.embed_url ?: ""
-                    if (stUrl.isNotBlank() && (stUrl.contains(".m3u8") || stUrl.contains(".mpd"))) {
-                        if (extractor.extractStream(stUrl, "$mainUrl/", subtitleCallback, callback)) {
-                            extractedAny = true
+                // 2. Ekstraksi embed_url jika streamUrl kosong atau embed bukan sekedar mirror pandecocogaming
+                if (embedUrl.isNotBlank() && (streamUrl.isBlank() || !embedUrl.contains("pandecocogaming.sbs"))) {
+                    try {
+                        if (extractor.extractStream(
+                                url = embedUrl,
+                                referer = "$mainUrl/",
+                                subtitleCallback = subtitleCallback,
+                                callback = callback,
+                                customSource = sName
+                            )) {
+                            anyEmitted = true
                         }
-                    } else if (ebUrl.isNotBlank()) {
-                        if (extractor.extractStream(ebUrl, "$mainUrl/", subtitleCallback, callback)) {
-                            extractedAny = true
-                        }
-                    }
+                    } catch (_: Exception) {}
                 }
-                if (extractedAny) return true
             }
+            if (anyEmitted) return true
         }
 
         // 3. Fallback umum ke StreamCornerExtractor

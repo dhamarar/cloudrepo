@@ -30,10 +30,12 @@ open class StreamCornerExtractor : ExtractorApi() {
         url: String,
         referer: String,
         subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
+        callback: (ExtractorLink) -> Unit,
+        customSource: String? = null
     ): Boolean {
         val cleanUrl = url.trim()
         if (cleanUrl.isBlank()) return false
+        val actualSource = customSource?.takeIf { it.isNotBlank() } ?: name
 
         // 1. Direct .m3u8
         if (cleanUrl.contains(".m3u8")) {
@@ -45,7 +47,7 @@ open class StreamCornerExtractor : ExtractorApi() {
             var generatedAny = false
             try {
                 val list = M3u8Helper.generateM3u8(
-                    source = name,
+                    source = actualSource,
                     streamUrl = cleanUrl,
                     referer = referer,
                     headers = headersMap
@@ -59,8 +61,8 @@ open class StreamCornerExtractor : ExtractorApi() {
             if (!generatedAny) {
                 callback(
                     newExtractorLink(
-                        name = "$name Live HLS",
-                        source = name,
+                        name = "$actualSource Live HLS",
+                        source = actualSource,
                         url = cleanUrl,
                         type = ExtractorLinkType.M3U8
                     ) {
@@ -77,8 +79,8 @@ open class StreamCornerExtractor : ExtractorApi() {
         if (cleanUrl.contains(".mpd")) {
             callback(
                 newExtractorLink(
-                    name = "$name Live DASH",
-                    source = name,
+                    name = "$actualSource Live DASH",
+                    source = actualSource,
                     url = cleanUrl,
                     type = ExtractorLinkType.DASH
                 ) {
@@ -101,7 +103,7 @@ open class StreamCornerExtractor : ExtractorApi() {
                 if (!b64.isNullOrBlank()) {
                     val decoded = String(Base64.getDecoder().decode(b64), Charsets.UTF_8)
                     if (decoded.startsWith("http")) {
-                        return extractStream(decoded, cleanUrl, subtitleCallback, callback)
+                        return extractStream(decoded, cleanUrl, subtitleCallback, callback, customSource = actualSource)
                     }
                 }
             } catch (_: Exception) {}
@@ -119,10 +121,25 @@ open class StreamCornerExtractor : ExtractorApi() {
                 val streamUrl = response.url
                 if (streamUrl.isNotBlank() && (streamUrl.contains(".m3u8") || streamUrl.contains(".mpd"))) {
                     val isMpd = streamUrl.contains(".mpd")
+                    if (!isMpd && streamUrl.contains(".m3u8")) {
+                        val list = M3u8Helper.generateM3u8(
+                            source = actualSource,
+                            streamUrl = streamUrl,
+                            referer = cleanUrl,
+                            headers = mapOf(
+                                "Referer" to cleanUrl,
+                                "Origin" to getOrigin(cleanUrl)
+                            )
+                        )
+                        if (list.isNotEmpty()) {
+                            list.forEach(callback)
+                            return true
+                        }
+                    }
                     callback(
                         newExtractorLink(
-                            name = if (isMpd) "$name Live DASH" else "$name Live HLS",
-                            source = name,
+                            name = if (isMpd) "$actualSource Live DASH" else "$actualSource Live HLS",
+                            source = actualSource,
                             url = streamUrl,
                             type = if (isMpd) ExtractorLinkType.DASH else ExtractorLinkType.M3U8
                         ) {
@@ -142,12 +159,12 @@ open class StreamCornerExtractor : ExtractorApi() {
 
             val m3u8Match = m3u8Regex.find(pageHtml)?.groupValues?.get(1)
             if (!m3u8Match.isNullOrBlank()) {
-                return extractStream(fixUrl(m3u8Match), cleanUrl, subtitleCallback, callback)
+                return extractStream(fixUrl(m3u8Match), cleanUrl, subtitleCallback, callback, customSource = actualSource)
             }
 
             val mpdMatch = mpdRegex.find(pageHtml)?.groupValues?.get(1)
             if (!mpdMatch.isNullOrBlank()) {
-                return extractStream(fixUrl(mpdMatch), cleanUrl, subtitleCallback, callback)
+                return extractStream(fixUrl(mpdMatch), cleanUrl, subtitleCallback, callback, customSource = actualSource)
             }
 
             var anyIframeFound = false

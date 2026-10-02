@@ -15,11 +15,12 @@ Membangun ekstensi CloudStream 3 untuk **StreamCorner (streamcorner.st)** dengan
     - Raket & Lainnya: TENNIS, ATP 1000, ATP 500, WTA 1000, BASEBALL, MLB, CRICKET, CYCLING, DARTS, ICE HOCKEY, NHL, SHOOTING, SNOOKER, OTHERS
   - Katalog Beranda (`getMainPage`): Menampilkan baris/kategori dengan filter cerdas, indikator LIVE / waktu WIB 24 jam.
   - Pencarian (`search`): Pencarian event berdasarkan judul tim, kompetisi, atau nama laga.
-  - Detail Konten (`load`): Menampilkan detail pertandingan, waktu mulai, sinopsis, dan daftar stream server sebagai episode.
+  - Detail Konten (`load`): Menampilkan detail pertandingan, waktu mulai, sinopsis, dan daftar server stream sebagai 1 stream terpadu (`newMovieLoadResponse`).
   - Ekstraksi Stream Video (`loadLinks` & Extractor):
     - Direct Salsa20 RPC query untuk event detail streams (`/corner?p={providerId}&id={streamId}`).
-    - Ekstraksi direct stream (`stream_url` berekstensi `.m3u8` / `.mpd`).
-    - Resolusi player embed pihak ketiga (`embed.st`, `rockystream.st`, `pandecocogaming.sbs`, `sportsonliine.click`, dll.).
+    - Ekstraksi semua server secara paralel via `amap` sebagai multiple sources di player Cloudstream.
+    - Resolusi multi-track/kualitas via `M3u8Helper.generateM3u8` dan direct DASH `.mpd`.
+    - Resolusi player embed pihak ketiga (`embed.st`, `rockystream.st`, `pandecocogaming.sbs`, dll.).
     - Fallback ke `loadExtractor` dan `WebViewResolver` jika diperlukan.
 - **Out**:
   - Fitur chat interaktif bawaan situs (`streamcorner-chat.pages.dev`).
