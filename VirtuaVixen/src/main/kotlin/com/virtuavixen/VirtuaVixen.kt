@@ -8,7 +8,7 @@ import org.jsoup.nodes.Element
 import java.util.UUID
 
 class VirtuaVixen : MainAPI() {
-    override var mainUrl = "https://virtuavixen.com"
+    override var mainUrl = "https://vv2.dtsen.workers.dev"
     override var name = "VirtuaVixen"
     override val hasMainPage = true
     override var lang = "en"
@@ -137,7 +137,8 @@ class VirtuaVixen : MainAPI() {
                 val sources = json.optJSONArray("sources") ?: continue
                 for (i in 0 until sources.length()) {
                     val srcObj = sources.optJSONObject(i) ?: continue
-                    val streamLoaderUrl = fixUrlNull(srcObj.optString("src")) ?: continue
+                    var streamLoaderUrl = fixUrlNull(srcObj.optString("src")) ?: continue
+                    streamLoaderUrl = streamLoaderUrl.replace("https://virtuavixen.com", mainUrl)
 
                     // 1a. Otentikasi FV Player anti-rip performance check
                     try {
@@ -175,7 +176,7 @@ class VirtuaVixen : MainAPI() {
                     if (playlistMatches.isNotEmpty()) {
                         for (match in playlistMatches) {
                             val resDim = match.groupValues[1]
-                            val subUrl = match.groupValues[2]
+                            val subUrl = match.groupValues[2].replace("https://virtuavixen.com", mainUrl)
                             val qualityNum = getQualityFromName("${resDim.substringAfter("x")}p")
 
                             try {
@@ -188,7 +189,7 @@ class VirtuaVixen : MainAPI() {
                                 ).text
 
                                 val keyMatch = Regex("""#EXT-X-KEY:METHOD=AES-128,URI=["']([^"']+)["']""").find(subText)
-                                val keyUrl = keyMatch?.groupValues?.get(1)
+                                val keyUrl = keyMatch?.groupValues?.get(1)?.replace("https://virtuavixen.com", mainUrl)
 
                                 val keyBytes = if (keyUrl != null) {
                                     cachedKeys.getOrPut(keyUrl) {
@@ -231,7 +232,7 @@ class VirtuaVixen : MainAPI() {
                         // Single playlist
                         try {
                             val keyMatch = Regex("""#EXT-X-KEY:METHOD=AES-128,URI=["']([^"']+)["']""").find(masterText)
-                            val keyUrl = keyMatch?.groupValues?.get(1)
+                            val keyUrl = keyMatch?.groupValues?.get(1)?.replace("https://virtuavixen.com", mainUrl)
                             val keyBytes = if (keyUrl != null) {
                                 val raw = app.get(
                                     keyUrl,
