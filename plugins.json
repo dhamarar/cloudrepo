@@ -297,7 +297,7 @@
         "tvTypes": [
             "Live"
         ],
-        "version": 2,
+        "version": 1,
         "internalName": "StreamCorner",
         "description": "StreamCorner - Free Live Sports, 24/7 Channels, NFL, NBA, SOCCER, UFC, and more",
         "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/StreamCorner.cs3",
@@ -343,10 +343,10 @@
     },
     {
         "iconUrl": "https://virtuavixen.com/wp-content/uploads/2025/11/virtuavixen_logo_transparent.webp",
-        "fileHash": "sha256-26e85d1f73a2c238ec3619d7fffd68b1513e40cfc2c0db6ad71a81adef817ffc",
+        "fileHash": "sha256-445e26647709517415a70e6e2ccb759ffd1821701b8e1b8d477657589c93f7a7",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
-        "fileSize": 27751,
+        "fileSize": 27894,
         "status": 2,
         "language": "en",
         "authors": [
