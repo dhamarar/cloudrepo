@@ -621,22 +621,56 @@ class StreamCorner : MainAPI() {
                             anyEmitted = true
                         }
                     } else if (streamUrl.contains(".mpd")) {
-                        callback(
-                            newExtractorLink(
-                                name = "$sName Live DASH",
-                                source = sName,
-                                url = streamUrl,
-                                type = ExtractorLinkType.DASH
-                            ) {
-                                this.referer = "$mainUrl/"
-                                this.headers = mapOf(
-                                    "Referer" to "$mainUrl/",
-                                    "Origin" to mainUrl
-                                )
-                                this.quality = Qualities.P1080.value
-                            }
-                        )
-                        anyEmitted = true
+                        val keys = st.stream_keys?.trim().orEmpty()
+                        val (rawKid, rawKey) = if (keys.contains(":")) {
+                            keys.substringBefore(":").trim() to keys.substringAfter(":").trim()
+                        } else {
+                            "" to ""
+                        }
+
+                        if (rawKid.isNotBlank() && rawKey.isNotBlank()) {
+                            val b64Kid = StreamCornerCipher.toClearKeyB64(rawKid)
+                            val b64Key = StreamCornerCipher.toClearKeyB64(rawKey)
+                            callback(
+                                newDrmExtractorLink(
+                                    source = sName,
+                                    name = "$sName Live DASH",
+                                    url = streamUrl,
+                                    type = ExtractorLinkType.DASH,
+                                    uuid = CLEARKEY_UUID
+                                ) {
+                                    this.kid = b64Kid
+                                    this.key = b64Key
+                                    this.kty = "oct"
+                                    this.referer = "$mainUrl/"
+                                    this.headers = mapOf(
+                                        "Referer" to "$mainUrl/",
+                                        "Origin" to mainUrl,
+                                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+                                    )
+                                    this.quality = Qualities.P1080.value
+                                }
+                            )
+                            anyEmitted = true
+                        } else {
+                            callback(
+                                newExtractorLink(
+                                    name = "$sName Live DASH",
+                                    source = sName,
+                                    url = streamUrl,
+                                    type = ExtractorLinkType.DASH
+                                ) {
+                                    this.referer = "$mainUrl/"
+                                    this.headers = mapOf(
+                                        "Referer" to "$mainUrl/",
+                                        "Origin" to mainUrl,
+                                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+                                    )
+                                    this.quality = Qualities.P1080.value
+                                }
+                            )
+                            anyEmitted = true
+                        }
                     } else {
                         callback(
                             newExtractorLink(

@@ -77,21 +77,52 @@ open class StreamCornerExtractor : ExtractorApi() {
 
         // 2. Direct .mpd
         if (cleanUrl.contains(".mpd")) {
-            callback(
-                newExtractorLink(
-                    name = "$actualSource Live DASH",
-                    source = actualSource,
-                    url = cleanUrl,
-                    type = ExtractorLinkType.DASH
-                ) {
-                    this.referer = referer
-                    this.headers = mapOf(
-                        "Referer" to referer,
-                        "Origin" to getOrigin(referer)
-                    )
-                    this.quality = Qualities.P1080.value
-                }
-            )
+            val keyParam = Regex("""(?:keys|key|drm)=([a-fA-F0-9]{32}:[a-fA-F0-9]{32})""").find(cleanUrl)?.groupValues?.get(1)
+            val (rawKid, rawKey) = if (keyParam?.contains(":") == true) {
+                keyParam.substringBefore(":").trim() to keyParam.substringAfter(":").trim()
+            } else "" to ""
+
+            if (rawKid.isNotBlank() && rawKey.isNotBlank()) {
+                val b64Kid = StreamCornerCipher.toClearKeyB64(rawKid)
+                val b64Key = StreamCornerCipher.toClearKeyB64(rawKey)
+                callback(
+                    newDrmExtractorLink(
+                        source = actualSource,
+                        name = "$actualSource Live DASH",
+                        url = cleanUrl.substringBefore("#").substringBefore("?keys="),
+                        type = ExtractorLinkType.DASH,
+                        uuid = CLEARKEY_UUID
+                    ) {
+                        this.kid = b64Kid
+                        this.key = b64Key
+                        this.kty = "oct"
+                        this.referer = referer
+                        this.headers = mapOf(
+                            "Referer" to referer,
+                            "Origin" to getOrigin(referer),
+                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+                        )
+                        this.quality = Qualities.P1080.value
+                    }
+                )
+            } else {
+                callback(
+                    newExtractorLink(
+                        name = "$actualSource Live DASH",
+                        source = actualSource,
+                        url = cleanUrl,
+                        type = ExtractorLinkType.DASH
+                    ) {
+                        this.referer = referer
+                        this.headers = mapOf(
+                            "Referer" to referer,
+                            "Origin" to getOrigin(referer),
+                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+                        )
+                        this.quality = Qualities.P1080.value
+                    }
+                )
+            }
             return true
         }
 

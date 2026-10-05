@@ -34,6 +34,30 @@ object StreamCornerCipher {
         return Base64.getDecoder().decode(s)
     }
 
+    fun hexToBytes(hex: String): ByteArray {
+        val clean = hex.trim().replace("-", "")
+        val len = clean.length
+        val data = ByteArray(len / 2)
+        var i = 0
+        while (i < len) {
+            val h = Character.digit(clean[i], 16)
+            val l = Character.digit(clean[i + 1], 16)
+            data[i / 2] = ((h shl 4) + l).toByte()
+            i += 2
+        }
+        return data
+    }
+
+    fun toClearKeyB64(value: String): String {
+        val trimmed = value.trim()
+        val cleanHex = trimmed.replace("-", "")
+        return if (cleanHex.length == 32 && cleanHex.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }) {
+            base64UrlEncode(hexToBytes(cleanHex))
+        } else {
+            trimmed.replace('+', '-').replace('/', '_').trimEnd('=')
+        }
+    }
+
     private fun rotl(v: Int, n: Int): Int {
         return (v shl n) or (v ushr (32 - n))
     }
