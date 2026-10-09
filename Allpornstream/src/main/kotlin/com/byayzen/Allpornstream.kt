@@ -26,6 +26,8 @@ class Allpornstream : MainAPI() {
     )
 
     override val mainPage = mainPageOf(
+        "${mainUrl}/" to "Recent",
+        "${mainUrl}/?sort=most_viewed" to "Viewed 7d",
         "${mainUrl}/categories/brunette" to "Brunette",
         "${mainUrl}/categories/shaved-pussy" to "Shaved Pussy",
         "${mainUrl}/categories/anal" to "Anal",
@@ -36,7 +38,18 @@ class Allpornstream : MainAPI() {
         "${mainUrl}/categories/asian" to "Asian",
         "${mainUrl}/categories/masturbation" to "Masturbation",
         "${mainUrl}/categories/naughtyamerica" to "Naughtyamerica",
-        "${mainUrl}/categories/casting" to "Casting"
+        "${mainUrl}/categories/casting" to "Casting",
+        "${mainUrl}/categories/4-k-porn" to "4K Porn",
+        "${mainUrl}/categories/big-tits" to "Big Tits",
+        "${mainUrl}/categories/milf" to "Milf",
+        "${mainUrl}/categories/blowjob" to "Blowjob",
+        "${mainUrl}/categories/big-ass" to "Big Ass",
+        "${mainUrl}/categories/60-fps" to "60 FPS",
+        "${mainUrl}/categories/lesbians" to "Lesbians",
+        "${mainUrl}/categories/babe" to "Babe",
+        "${mainUrl}/categories/pussy-licking" to "Pussy Licking",
+        "${mainUrl}/categories/onlyfans" to "Onlyfans",
+        "${mainUrl}/categories/undressing" to "Undressing"
     )
 
     private fun posteriduzenle(url: String): String {
