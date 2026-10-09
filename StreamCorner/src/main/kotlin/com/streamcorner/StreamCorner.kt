@@ -577,7 +577,13 @@ class StreamCorner : MainAPI() {
         }
 
         val event = (if (id.isNotBlank()) eventDetailCache["${providerId}_$id"] ?: eventDetailCache[id] else null)
-            ?: (if (providerId.isNotBlank() && id.isNotBlank()) fetchEventDetail(providerId, id) else null)
+            ?: (if (providerId.isNotBlank() && id.isNotBlank()) {
+                try {
+                    fetchEventDetail(providerId, id)
+                } catch (_: Exception) {
+                    null
+                }
+            } else null)
             ?: cachedEvents?.firstOrNull { (providerId.isBlank() || it.providerId == providerId) && it.getId() == id }
 
         val rawStreams = event?.streams ?: emptyList()
@@ -715,6 +721,12 @@ class StreamCorner : MainAPI() {
         }
 
         // 3. Fallback umum ke StreamCornerExtractor
-        return extractor.extractStream(cleanData, "$mainUrl/", subtitleCallback, callback)
+        // If data is JSON, fallback by constructing the stream URL so WebViewResolver can handle it
+        val targetUrl = if (cleanData.startsWith("{") || cleanData.startsWith("detail:")) {
+            "$mainUrl/stream/$providerId/$id"
+        } else {
+            cleanData
+        }
+        return extractor.extractStream(targetUrl, "$mainUrl/", subtitleCallback, callback)
     }
 }
