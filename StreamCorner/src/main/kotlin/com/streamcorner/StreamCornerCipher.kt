@@ -1,20 +1,18 @@
 package com.streamcorner
 
-import org.json.JSONObject
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
 
 object StreamCornerCipher {
-    private val J = "ninjacorner.api.a07d402e812e|c85028399122b8f6e2df5869aa1b0981d172cf587b62fcde2562fbb12a3a9fdd".toByteArray(Charsets.UTF_8)
-    private val it = "ninjacorner.transport.83af8c6260".toByteArray(Charsets.UTF_8)
-    private val Gt = "ninjacorner.token.2026|28d84e4103bc3a15bb1db2db98cfbd69677947bb186311cbfd4878b9c30af7884cdb4d6479fe977aa51d130bd1f3d3d0".toByteArray(Charsets.UTF_8)
-    private val et = "ninjacorner:req:outer:v4".toByteArray(Charsets.UTF_8)
-    private val ot = "ninjacorner:req:guard:v4".toByteArray(Charsets.UTF_8)
-    private val bt = "ninjacorner:outer:v3".toByteArray(Charsets.UTF_8)
-    private val Mt = "ninjacorner:guard:v2".toByteArray(Charsets.UTF_8)
-
-    private val A = arrayOf("cWsI", "7kYa", "gicW", "Ez-2", "Is27", "0OA1", "9Poj", "pfOv")
+    private val b = "ninjacorner.api.f6b96ddb9345|74e5977897d017e3fd2a2371dfbbdb0c5084ad088d3afac6c2ee0a077540539f".toByteArray(Charsets.UTF_8)
+    private val et = "ninjacorner.transport.eaeb682355".toByteArray(Charsets.UTF_8)
+    private const val Pt = "ninjacorner.token.2026|28d84e4103bc3a15bb1db2db98cfbd69677947bb186311cbfd4878b9c30af7884cdb4d6479fe977aa51d130bd1f3d3d0"
+    private val tokenBytes = Pt.toByteArray(Charsets.UTF_8)
+    private val rt = "ninjacorner:req:outer:v4".toByteArray(Charsets.UTF_8)
+    private val nt = "ninjacorner:req:guard:v4".toByteArray(Charsets.UTF_8)
+    private val Tt = "ninjacorner:guard:v2".toByteArray(Charsets.UTF_8)
+    private val Et = "ninjacorner:outer:v3".toByteArray(Charsets.UTF_8)
 
     private val random = SecureRandom()
 
@@ -160,45 +158,61 @@ object StreamCornerCipher {
     }
 
     data class EncryptedPayload(
-        val body: String,
+        val body: ByteArray,
         val nonce: ByteArray,
-        val paramBytes: ByteArray
+        val paramBytes: ByteArray,
+        val uBytes: ByteArray
     )
 
     fun encryptRequest(param: String): EncryptedPayload {
         val cleanParam = param.trim().lowercase()
-        val o = cleanParam.toByteArray(Charsets.UTF_8)
+        val paramBytes = cleanParam.toByteArray(Charsets.UTF_8)
         val nonce = ByteArray(8)
         random.nextBytes(nonce)
 
-        val reqKey = sha256(J, it, et)
-        val gtStr = String(Gt, Charsets.UTF_8)
-        val plaintext = "[\"$gtStr\",\"$cleanParam\"]".toByteArray(Charsets.UTF_8)
+        val reqKey = sha256(b, et, rt)
+        val timeWindow = System.currentTimeMillis() / 300_000L
+        val plaintext = """["$Pt","$cleanParam",$timeWindow]""".toByteArray(Charsets.UTF_8)
         val ciphertext = salsaCipher(plaintext, reqKey, nonce)
-        val tag = sha256(reqKey, nonce, ciphertext, ot).copyOfRange(0, 12)
+        val tag = sha256(reqKey, nonce, ciphertext, nt).copyOfRange(0, 12)
 
-        val obj = JSONObject().apply {
-            put(A[0], 9)
-            put(A[1], base64UrlEncode(nonce))
-            put(A[2], base64UrlEncode(ciphertext))
-            put(A[3], base64UrlEncode(tag))
-        }
+        val uBytes = ByteArray(4)
+        uBytes[0] = ((timeWindow ushr 24) and 0xFF).toByte()
+        uBytes[1] = ((timeWindow ushr 16) and 0xFF).toByte()
+        uBytes[2] = ((timeWindow ushr 8) and 0xFF).toByte()
+        uBytes[3] = (timeWindow and 0xFF).toByte()
 
-        return EncryptedPayload(obj.toString(), nonce, o)
+        val body = ByteArray(1 + 8 + 12 + ciphertext.size)
+        body[0] = 10.toByte() // 0x0A
+        System.arraycopy(nonce, 0, body, 1, 8)
+        System.arraycopy(tag, 0, body, 9, 12)
+        System.arraycopy(ciphertext, 0, body, 21, ciphertext.size)
+
+        return EncryptedPayload(body, nonce, paramBytes, uBytes)
     }
 
-    fun decryptResponse(responseText: String, reqNonce: ByteArray, reqParamBytes: ByteArray): String {
-        val q = JSONObject(responseText)
-        if (q.optInt(A[4]) != 3) throw IllegalStateException("Invalid response marker")
+    fun decryptResponse(respBytes: ByteArray, payload: EncryptedPayload): String {
+        return decryptResponse(respBytes, payload.nonce, payload.paramBytes, payload.uBytes)
+    }
 
-        val respNonce = base64UrlDecode(q.getString(A[5]))
-        val respCiphertext = base64UrlDecode(q.getString(A[6]))
-        val respTag = base64UrlDecode(q.getString(A[7]))
+    fun decryptResponse(
+        respBytes: ByteArray,
+        reqNonce: ByteArray,
+        reqParamBytes: ByteArray,
+        reqUBytes: ByteArray
+    ): String {
+        if (respBytes.size <= 21 || respBytes[0] != 4.toByte()) {
+            throw IllegalStateException("Invalid response format or marker: ${respBytes.getOrNull(0)}")
+        }
 
-        val respKey = sha256(J, it, Gt, reqNonce, reqParamBytes, bt)
-        val expectedTag = sha256(respKey, respNonce, respCiphertext, Mt).copyOfRange(0, 12)
+        val respNonce = respBytes.copyOfRange(1, 9)
+        val respTag = respBytes.copyOfRange(9, 21)
+        val respCiphertext = respBytes.copyOfRange(21, respBytes.size)
 
-        if (!expectedTag.contentEquals(respTag)) {
+        val respKey = sha256(b, et, tokenBytes, reqNonce, reqParamBytes, reqUBytes, Et)
+        val expectedTag = sha256(respKey, respNonce, respCiphertext, Tt).copyOfRange(0, 12)
+
+        if (!MessageDigest.isEqual(respTag, expectedTag)) {
             throw SecurityException("StreamCorner guard tag mismatch")
         }
 

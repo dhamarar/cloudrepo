@@ -72,6 +72,11 @@ data class CornerStream(
     val embed_url: String? = null
 )
 
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class CornerChannelContainer(
+    val channels: List<CornerEvent>? = null
+)
+
 class StreamCorner : MainAPI() {
     override var mainUrl = "https://streamcorner.st"
     override var name = "StreamCorner"
@@ -125,11 +130,15 @@ class StreamCorner : MainAPI() {
 
     private val providers = listOf(
         "admin",
-        "unl",
+        "mlb",
+        "nfl",
+        "nba",
         "alpha",
         "beta",
         "001",
         "003",
+        "extra001",
+        "extra002",
         "extra003",
         "extra004",
         "channels",
@@ -156,7 +165,7 @@ class StreamCorner : MainAPI() {
                     url,
                     data = mapOf(),
                     headers = mapOf(
-                        "Accept" to "application/json",
+                        "Accept" to "application/octet-stream",
                         "Content-Type" to "text/plain",
                         "Origin" to mainUrl,
                         "Referer" to "$mainUrl/"
@@ -166,9 +175,8 @@ class StreamCorner : MainAPI() {
 
                 if (res.isSuccessful) {
                     val decrypted = StreamCornerCipher.decryptResponse(
-                        res.text,
-                        payload.nonce,
-                        payload.paramBytes
+                        res.body.bytes(),
+                        payload
                     )
                     if (decrypted.isNotBlank()) {
                         return decrypted
@@ -193,6 +201,7 @@ class StreamCorner : MainAPI() {
                     val jsonStr = postWorker(pName)
                     if (!jsonStr.isNullOrBlank()) {
                         val parsed = parseJson<List<CornerEvent>>(jsonStr)
+                            ?: parseJson<CornerChannelContainer>(jsonStr)?.channels
                         parsed?.forEach { ev ->
                             ev.providerId = prov
                         }
