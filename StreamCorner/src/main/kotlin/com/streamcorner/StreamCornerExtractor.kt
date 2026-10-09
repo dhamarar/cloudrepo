@@ -183,6 +183,49 @@ open class StreamCornerExtractor : ExtractorApi() {
             } catch (_: Exception) {}
         }
 
+        // 4.5. StreamCorner bypass via WebViewResolver (for Cloudflare)
+        if (cleanUrl.contains("streamcorner.st")) {
+            try {
+                val resolver = WebViewResolver(
+                    interceptUrl = Regex(".*\\.(m3u8|mpd)(\\?.*)?$"),
+                    additionalUrls = listOf(Regex(".*\\.(m3u8|mpd).*")),
+                    useOkhttp = false
+                )
+                val response = app.get(cleanUrl, referer = referer, interceptor = resolver)
+                val streamUrl = response.url
+                if (streamUrl.isNotBlank() && (streamUrl.contains(".m3u8") || streamUrl.contains(".mpd"))) {
+                    val isMpd = streamUrl.contains(".mpd")
+                    if (!isMpd && streamUrl.contains(".m3u8")) {
+                        val list = M3u8Helper.generateM3u8(
+                            source = actualSource,
+                            streamUrl = streamUrl,
+                            referer = cleanUrl,
+                            headers = mapOf(
+                                "Referer" to cleanUrl,
+                                "Origin" to getOrigin(cleanUrl)
+                            )
+                        )
+                        if (list.isNotEmpty()) {
+                            list.forEach(callback)
+                            return true
+                        }
+                    }
+                    callback(
+                        newExtractorLink(
+                            name = if (isMpd) "$actualSource Live DASH" else "$actualSource Live HLS",
+                            source = actualSource,
+                            url = streamUrl,
+                            type = if (isMpd) ExtractorLinkType.DASH else ExtractorLinkType.M3U8
+                        ) {
+                            this.referer = cleanUrl
+                            this.quality = Qualities.P1080.value
+                        }
+                    )
+                    return true
+                }
+            } catch (_: Exception) {}
+        }
+
         // 5. General page scraping: check iframes or inline m3u8
         try {
             val doc = app.get(cleanUrl, referer = referer).document

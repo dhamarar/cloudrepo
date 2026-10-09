@@ -9,3 +9,4 @@ cloudstream {
         "Live"
     )
 }
+android { namespace = "com.streamcorner" }
