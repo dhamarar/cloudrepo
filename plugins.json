@@ -305,10 +305,10 @@
         "name": "Pusatfilm"
     },
     {
-        "fileHash": "sha256-e556c7c8a2f5e1bd8febe8cd27f8924a71b02bd0b4fc9287ab9cccc64c5851c1",
+        "fileHash": "sha256-e63111130301720e276fa0ae624cf53d68d3da5766f6503168155975e28fa518",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
-        "fileSize": 51339,
+        "fileSize": 52204,
         "status": 2,
         "language": "en",
         "authors": [
@@ -317,7 +317,7 @@
         "tvTypes": [
             "Live"
         ],
-        "version": 3,
+        "version": 2,
         "internalName": "StreamCorner",
         "description": "StreamCorner - Free Live Sports, 24/7 Channels, NFL, NBA, SOCCER, UFC, and more",
         "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/StreamCorner.cs3",
