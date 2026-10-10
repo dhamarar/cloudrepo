@@ -37,20 +37,24 @@ open class StreamCornerExtractor : ExtractorApi() {
         if (cleanUrl.isBlank()) return false
         val actualSource = customSource?.takeIf { it.isNotBlank() } ?: name
 
+        val defaultHeaders = mapOf(
+            "Referer" to referer,
+            "Origin" to getOrigin(referer),
+            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Accept" to "*/*",
+            "Accept-Language" to "en-US,en;q=0.5",
+            "Connection" to "keep-alive"
+        )
+
         // 1. Direct .m3u8
         if (cleanUrl.contains(".m3u8")) {
-            val headersMap = mapOf(
-                "Referer" to referer,
-                "Origin" to getOrigin(referer),
-                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-            )
             var generatedAny = false
             try {
                 val list = M3u8Helper.generateM3u8(
                     source = actualSource,
                     streamUrl = cleanUrl,
                     referer = referer,
-                    headers = headersMap
+                    headers = defaultHeaders
                 )
                 if (list.isNotEmpty()) {
                     list.forEach(callback)
@@ -67,7 +71,7 @@ open class StreamCornerExtractor : ExtractorApi() {
                         type = ExtractorLinkType.M3U8
                     ) {
                         this.referer = referer
-                        this.headers = headersMap
+                        this.headers = defaultHeaders
                         this.quality = Qualities.P1080.value
                     }
                 )
@@ -97,11 +101,7 @@ open class StreamCornerExtractor : ExtractorApi() {
                         this.key = b64Key
                         this.kty = "oct"
                         this.referer = referer
-                        this.headers = mapOf(
-                            "Referer" to referer,
-                            "Origin" to getOrigin(referer),
-                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-                        )
+                        this.headers = defaultHeaders
                         this.quality = Qualities.P1080.value
                     }
                 )
@@ -114,11 +114,7 @@ open class StreamCornerExtractor : ExtractorApi() {
                         type = ExtractorLinkType.DASH
                     ) {
                         this.referer = referer
-                        this.headers = mapOf(
-                            "Referer" to referer,
-                            "Origin" to getOrigin(referer),
-                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-                        )
+                        this.headers = defaultHeaders
                         this.quality = Qualities.P1080.value
                     }
                 )
@@ -153,20 +149,33 @@ open class StreamCornerExtractor : ExtractorApi() {
                 if (streamUrl.isNotBlank() && (streamUrl.contains(".m3u8") || streamUrl.contains(".mpd"))) {
                     val isMpd = streamUrl.contains(".mpd")
                     if (!isMpd && streamUrl.contains(".m3u8")) {
+                        val embedHeaders = mapOf(
+                            "Referer" to cleanUrl,
+                            "Origin" to getOrigin(cleanUrl),
+                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                            "Accept" to "*/*",
+                            "Accept-Language" to "en-US,en;q=0.5",
+                            "Connection" to "keep-alive"
+                        )
                         val list = M3u8Helper.generateM3u8(
                             source = actualSource,
                             streamUrl = streamUrl,
                             referer = cleanUrl,
-                            headers = mapOf(
-                                "Referer" to cleanUrl,
-                                "Origin" to getOrigin(cleanUrl)
-                            )
+                            headers = embedHeaders
                         )
                         if (list.isNotEmpty()) {
                             list.forEach(callback)
                             return true
                         }
                     }
+                    val finalEmbedHeaders = mapOf(
+                        "Referer" to cleanUrl,
+                        "Origin" to getOrigin(cleanUrl),
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                        "Accept" to "*/*",
+                        "Accept-Language" to "en-US,en;q=0.5",
+                        "Connection" to "keep-alive"
+                    )
                     callback(
                         newExtractorLink(
                             name = if (isMpd) "$actualSource Live DASH" else "$actualSource Live HLS",
@@ -175,6 +184,7 @@ open class StreamCornerExtractor : ExtractorApi() {
                             type = if (isMpd) ExtractorLinkType.DASH else ExtractorLinkType.M3U8
                         ) {
                             this.referer = cleanUrl
+                            this.headers = finalEmbedHeaders
                             this.quality = Qualities.P1080.value
                         }
                     )
@@ -196,20 +206,33 @@ open class StreamCornerExtractor : ExtractorApi() {
                 if (streamUrl.isNotBlank() && (streamUrl.contains(".m3u8") || streamUrl.contains(".mpd"))) {
                     val isMpd = streamUrl.contains(".mpd")
                     if (!isMpd && streamUrl.contains(".m3u8")) {
+                        val cfHeaders = mapOf(
+                            "Referer" to cleanUrl,
+                            "Origin" to getOrigin(cleanUrl),
+                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                            "Accept" to "*/*",
+                            "Accept-Language" to "en-US,en;q=0.5",
+                            "Connection" to "keep-alive"
+                        )
                         val list = M3u8Helper.generateM3u8(
                             source = actualSource,
                             streamUrl = streamUrl,
                             referer = cleanUrl,
-                            headers = mapOf(
-                                "Referer" to cleanUrl,
-                                "Origin" to getOrigin(cleanUrl)
-                            )
+                            headers = cfHeaders
                         )
                         if (list.isNotEmpty()) {
                             list.forEach(callback)
                             return true
                         }
                     }
+                    val finalCfHeaders = mapOf(
+                        "Referer" to cleanUrl,
+                        "Origin" to getOrigin(cleanUrl),
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                        "Accept" to "*/*",
+                        "Accept-Language" to "en-US,en;q=0.5",
+                        "Connection" to "keep-alive"
+                    )
                     callback(
                         newExtractorLink(
                             name = if (isMpd) "$actualSource Live DASH" else "$actualSource Live HLS",
@@ -218,6 +241,7 @@ open class StreamCornerExtractor : ExtractorApi() {
                             type = if (isMpd) ExtractorLinkType.DASH else ExtractorLinkType.M3U8
                         ) {
                             this.referer = cleanUrl
+                            this.headers = finalCfHeaders
                             this.quality = Qualities.P1080.value
                         }
                     )
