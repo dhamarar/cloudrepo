@@ -599,19 +599,23 @@ class StreamCorner : MainAPI() {
 
                 // 1. Direct stream_url (.m3u8 / .mpd / direct video)
                 if (streamUrl.isNotBlank()) {
+                    val defaultHeaders = mapOf(
+                        "Referer" to "$mainUrl/",
+                        "Origin" to mainUrl,
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                        "Accept" to "*/*",
+                        "Accept-Language" to "en-US,en;q=0.5",
+                        "Connection" to "keep-alive"
+                    )
+
                     if (streamUrl.contains(".m3u8")) {
-                        val headersMap = mapOf(
-                            "Referer" to "$mainUrl/",
-                            "Origin" to mainUrl,
-                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-                        )
                         var generated = false
                         try {
                             val list = M3u8Helper.generateM3u8(
                                 source = sName,
                                 streamUrl = streamUrl,
                                 referer = "$mainUrl/",
-                                headers = headersMap
+                                headers = defaultHeaders
                             )
                             if (list.isNotEmpty()) {
                                 list.forEach(callback)
@@ -629,7 +633,7 @@ class StreamCorner : MainAPI() {
                                     type = ExtractorLinkType.M3U8
                                 ) {
                                     this.referer = "$mainUrl/"
-                                    this.headers = headersMap
+                                    this.headers = defaultHeaders
                                     this.quality = Qualities.P1080.value
                                 }
                             )
@@ -658,11 +662,7 @@ class StreamCorner : MainAPI() {
                                     this.key = b64Key
                                     this.kty = "oct"
                                     this.referer = "$mainUrl/"
-                                    this.headers = mapOf(
-                                        "Referer" to "$mainUrl/",
-                                        "Origin" to mainUrl,
-                                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-                                    )
+                                    this.headers = defaultHeaders
                                     this.quality = Qualities.P1080.value
                                 }
                             )
@@ -676,11 +676,7 @@ class StreamCorner : MainAPI() {
                                     type = ExtractorLinkType.DASH
                                 ) {
                                     this.referer = "$mainUrl/"
-                                    this.headers = mapOf(
-                                        "Referer" to "$mainUrl/",
-                                        "Origin" to mainUrl,
-                                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-                                    )
+                                    this.headers = defaultHeaders
                                     this.quality = Qualities.P1080.value
                                 }
                             )
@@ -695,6 +691,7 @@ class StreamCorner : MainAPI() {
                                 type = ExtractorLinkType.VIDEO
                             ) {
                                 this.referer = "$mainUrl/"
+                                this.headers = defaultHeaders
                                 this.quality = Qualities.P1080.value
                             }
                         )
