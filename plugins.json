@@ -305,10 +305,10 @@
         "name": "Pusatfilm"
     },
     {
-        "fileHash": "sha256-e63111130301720e276fa0ae624cf53d68d3da5766f6503168155975e28fa518",
+        "fileHash": "sha256-a85204ca70a2efaaa434ae47b0f06c97fd167667903fcd0a506457fa6ef21850",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
-        "fileSize": 52204,
+        "fileSize": 49846,
         "status": 2,
         "language": "en",
         "authors": [
