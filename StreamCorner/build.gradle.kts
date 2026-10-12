@@ -1,4 +1,4 @@
-version = 3
+version = 4
 
 cloudstream {
     description = "StreamCorner - Free Live Sports, 24/7 Channels, NFL, NBA, SOCCER, UFC, and more"
