@@ -667,6 +667,9 @@ class StreamCorner : MainAPI() {
                                 }
                             )
                             anyEmitted = true
+                        } else if (streamUrl.contains("cenc.mpd") || streamUrl.contains("/enc/")) {
+                            // Encrypted CENC without keys produces black/blank screen in ExoPlayer.
+                            // Do not emit without valid decryption keys.
                         } else {
                             callback(
                                 newExtractorLink(
@@ -699,8 +702,8 @@ class StreamCorner : MainAPI() {
                     }
                 }
 
-                // 2. Ekstraksi embed_url jika streamUrl kosong atau embed bukan sekedar mirror pandecocogaming
-                if (embedUrl.isNotBlank() && (streamUrl.isBlank() || !embedUrl.contains("pandecocogaming.sbs"))) {
+                // 2. Ekstraksi embed_url jika streamUrl kosong atau belum ada link
+                if (embedUrl.isNotBlank()) {
                     try {
                         if (extractor.extractStream(
                                 url = embedUrl,

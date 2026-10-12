@@ -89,11 +89,12 @@ open class StreamCornerExtractor : ExtractorApi() {
             if (rawKid.isNotBlank() && rawKey.isNotBlank()) {
                 val b64Kid = StreamCornerCipher.toClearKeyB64(rawKid)
                 val b64Key = StreamCornerCipher.toClearKeyB64(rawKey)
+                val cleanMpdUrl = cleanUrl.substringBefore("#").substringBefore("?keys=").substringBefore("&keys=")
                 callback(
                     newDrmExtractorLink(
                         source = actualSource,
                         name = "$actualSource Live DASH",
-                        url = cleanUrl.substringBefore("#").substringBefore("?keys="),
+                        url = cleanMpdUrl,
                         type = ExtractorLinkType.DASH,
                         uuid = CLEARKEY_UUID
                     ) {
@@ -105,6 +106,11 @@ open class StreamCornerExtractor : ExtractorApi() {
                         this.quality = Qualities.P1080.value
                     }
                 )
+                return true
+            } else if (cleanUrl.contains("cenc.mpd") || cleanUrl.contains("/enc/")) {
+                // CENC encrypted stream without decryption keys produces a black/blank screen in ExoPlayer.
+                // Do not emit without valid keys.
+                return false
             } else {
                 callback(
                     newExtractorLink(
@@ -118,8 +124,8 @@ open class StreamCornerExtractor : ExtractorApi() {
                         this.quality = Qualities.P1080.value
                     }
                 )
+                return true
             }
-            return true
         }
 
         // 3. RockyStream: decode atob(...) iframe
@@ -139,56 +145,57 @@ open class StreamCornerExtractor : ExtractorApi() {
         // 4. Embed.st atau server sejenis dengan WebViewResolver
         if (cleanUrl.contains("embed.st") || cleanUrl.contains("pandecocogaming.sbs")) {
             try {
+                val jsHook = """
+                    (function() {
+                        var origParse = JSON.parse;
+                        var capturedKeys = null;
+                        JSON.parse = function(text, reviver) {
+                            var res = origParse.apply(this, arguments);
+                            try {
+                                if (res && typeof res === 'object') {
+                                    var k = res.keys || res.stream_keys || res.key;
+                                    if (k) capturedKeys = k;
+                                    if (res.stream_url && k) {
+                                        var u = res.stream_url + (res.stream_url.indexOf('?') >= 0 ? '&' : '?') + 'keys=' + encodeURIComponent(k);
+                                        fetch(u).catch(function(){});
+                                    }
+                                }
+                            } catch(e) {}
+                            return res;
+                        };
+                        var origFetch = window.fetch;
+                        if (origFetch) {
+                            window.fetch = function(input, init) {
+                                try {
+                                    var url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+                                    if (url && url.indexOf('.mpd') >= 0 && capturedKeys && url.indexOf('keys=') < 0) {
+                                        var newUrl = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'keys=' + encodeURIComponent(capturedKeys);
+                                        if (typeof input === 'string') input = newUrl;
+                                        else input = new Request(newUrl, init);
+                                    }
+                                } catch(e) {}
+                                return origFetch.apply(this, arguments);
+                            };
+                        }
+                    })();
+                """.trimIndent()
+
                 val resolver = WebViewResolver(
                     interceptUrl = Regex(""".*\.(m3u8|mpd)(\?.*)?$"""),
                     additionalUrls = listOf(Regex(""".*\.(m3u8|mpd).*""")),
-                    useOkhttp = false
+                    useOkhttp = false,
+                    script = jsHook
                 )
                 val response = app.get(cleanUrl, referer = referer, interceptor = resolver)
                 val streamUrl = response.url
                 if (streamUrl.isNotBlank() && (streamUrl.contains(".m3u8") || streamUrl.contains(".mpd"))) {
-                    val isMpd = streamUrl.contains(".mpd")
-                    if (!isMpd && streamUrl.contains(".m3u8")) {
-                        val embedHeaders = mapOf(
-                            "Referer" to cleanUrl,
-                            "Origin" to getOrigin(cleanUrl),
-                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-                            "Accept" to "*/*",
-                            "Accept-Language" to "en-US,en;q=0.5",
-                            "Connection" to "keep-alive"
-                        )
-                        val list = M3u8Helper.generateM3u8(
-                            source = actualSource,
-                            streamUrl = streamUrl,
-                            referer = cleanUrl,
-                            headers = embedHeaders
-                        )
-                        if (list.isNotEmpty()) {
-                            list.forEach(callback)
-                            return true
-                        }
-                    }
-                    val finalEmbedHeaders = mapOf(
-                        "Referer" to cleanUrl,
-                        "Origin" to getOrigin(cleanUrl),
-                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-                        "Accept" to "*/*",
-                        "Accept-Language" to "en-US,en;q=0.5",
-                        "Connection" to "keep-alive"
+                    return extractStream(
+                        url = streamUrl,
+                        referer = cleanUrl,
+                        subtitleCallback = subtitleCallback,
+                        callback = callback,
+                        customSource = actualSource
                     )
-                    callback(
-                        newExtractorLink(
-                            name = if (isMpd) "$actualSource Live DASH" else "$actualSource Live HLS",
-                            source = actualSource,
-                            url = streamUrl,
-                            type = if (isMpd) ExtractorLinkType.DASH else ExtractorLinkType.M3U8
-                        ) {
-                            this.referer = cleanUrl
-                            this.headers = finalEmbedHeaders
-                            this.quality = Qualities.P1080.value
-                        }
-                    )
-                    return true
                 }
             } catch (_: Exception) {}
         }
@@ -204,48 +211,13 @@ open class StreamCornerExtractor : ExtractorApi() {
                 val response = app.get(cleanUrl, referer = referer, interceptor = resolver)
                 val streamUrl = response.url
                 if (streamUrl.isNotBlank() && (streamUrl.contains(".m3u8") || streamUrl.contains(".mpd"))) {
-                    val isMpd = streamUrl.contains(".mpd")
-                    if (!isMpd && streamUrl.contains(".m3u8")) {
-                        val cfHeaders = mapOf(
-                            "Referer" to cleanUrl,
-                            "Origin" to getOrigin(cleanUrl),
-                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-                            "Accept" to "*/*",
-                            "Accept-Language" to "en-US,en;q=0.5",
-                            "Connection" to "keep-alive"
-                        )
-                        val list = M3u8Helper.generateM3u8(
-                            source = actualSource,
-                            streamUrl = streamUrl,
-                            referer = cleanUrl,
-                            headers = cfHeaders
-                        )
-                        if (list.isNotEmpty()) {
-                            list.forEach(callback)
-                            return true
-                        }
-                    }
-                    val finalCfHeaders = mapOf(
-                        "Referer" to cleanUrl,
-                        "Origin" to getOrigin(cleanUrl),
-                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-                        "Accept" to "*/*",
-                        "Accept-Language" to "en-US,en;q=0.5",
-                        "Connection" to "keep-alive"
+                    return extractStream(
+                        url = streamUrl,
+                        referer = cleanUrl,
+                        subtitleCallback = subtitleCallback,
+                        callback = callback,
+                        customSource = actualSource
                     )
-                    callback(
-                        newExtractorLink(
-                            name = if (isMpd) "$actualSource Live DASH" else "$actualSource Live HLS",
-                            source = actualSource,
-                            url = streamUrl,
-                            type = if (isMpd) ExtractorLinkType.DASH else ExtractorLinkType.M3U8
-                        ) {
-                            this.referer = cleanUrl
-                            this.headers = finalCfHeaders
-                            this.quality = Qualities.P1080.value
-                        }
-                    )
-                    return true
                 }
             } catch (_: Exception) {}
         }
