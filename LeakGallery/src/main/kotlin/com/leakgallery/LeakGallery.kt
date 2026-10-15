@@ -199,7 +199,7 @@ class LeakGallery : MainAPI() {
         if (cleanQuery.isNotBlank() && results.none { it.name.equals(cleanQuery, ignoreCase = true) }) {
             try {
                 val directProfileText = app.get(
-                    "$apiUrl/profile/$cleanQuery?type=Videos&sort=MostRecent&fake=false",
+                    "$apiUrl/profile/$cleanQuery?type=Videos&sort=Longest&fake=false",
                     headers = defaultHeaders
                 ).text
                 val directProfile = jsonMapper.readValue<ProfileDetailResponse>(directProfileText)
@@ -309,7 +309,7 @@ class LeakGallery : MainAPI() {
                 .trim()
 
             val firstPageText = app.get(
-                "$apiUrl/profile/$username?type=Videos&sort=MostRecent&fake=false",
+                "$apiUrl/profile/$username?type=Videos&sort=Longest&fake=false",
                 headers = defaultHeaders
             ).text
 
@@ -324,7 +324,7 @@ class LeakGallery : MainAPI() {
                         async {
                             try {
                                 val nextPageText = app.get(
-                                    "$apiUrl/profile/$username/$page?type=Videos&sort=MostRecent&fake=false",
+                                    "$apiUrl/profile/$username/$page?type=Videos&sort=Longest&fake=false",
                                     headers = defaultHeaders
                                 ).text
                                 jsonMapper.readValue<ProfileDetailNextPage>(nextPageText).medias ?: emptyList()
