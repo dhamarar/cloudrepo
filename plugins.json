@@ -362,11 +362,31 @@
         "name": "TimStreams"
     },
     {
-        "iconUrl": "https://virtuavixen.com/wp-content/uploads/2025/11/virtuavixen_logo_transparent.webp",
-        "fileHash": "sha256-edfce56dca320783bd5ac51a4106527cf6a3f1a201a53c69eb6d17ee5a356da2",
+        "iconUrl": "https://vikuy.click/assets/brand/favicon.png",
+        "fileHash": "sha256-2ef0fdebe165a7292129b9fb11cb0a7383448666e1cd80b69f21bc46bb159a0c",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
-        "fileSize": 27878,
+        "fileSize": 16292,
+        "status": 2,
+        "language": "id",
+        "authors": [
+            "CloudX"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 1,
+        "internalName": "Vikuy",
+        "description": "Vikuy - Nonton video viral terbaru di vikuy.click",
+        "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/Vikuy.cs3",
+        "name": "Vikuy"
+    },
+    {
+        "iconUrl": "https://virtuavixen.com/wp-content/uploads/2025/11/virtuavixen_logo_transparent.webp",
+        "fileHash": "sha256-d30d5dd7e11df0f547cb320fe6bb530e122e4d10b66b11aa6ef8eacbd19cc3f5",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
+        "fileSize": 28478,
         "status": 2,
         "language": "en",
         "authors": [
