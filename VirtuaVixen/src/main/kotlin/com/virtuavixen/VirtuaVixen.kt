@@ -37,7 +37,7 @@ class VirtuaVixen : MainAPI() {
 
         val document = app.get(pageUrl, headers = mapOf("User-Agent" to USER_AGENT)).document
         val items = document.select("article.vve-card, div.btp_post_card, div.card").mapNotNull { it.toSearchResult() }
-        return newHomePageResponse(request.name, items)
+        return newHomePageResponse(request.name, items, hasNext = items.isNotEmpty())
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
@@ -111,6 +111,52 @@ class VirtuaVixen : MainAPI() {
                 ?: it.text().trim().takeIf { m -> m.isNotEmpty() }
         }.distinct()
 
+        val rawDurText = document.selectFirst("span.vve-up__dur, span.vve-card__dur, .duration, .video-duration")?.text()?.trim()
+
+        val durationSeconds: Int? = run {
+            val sec = document.selectFirst("meta[property='video:duration']")?.attr("content")?.trim()?.toIntOrNull()
+                ?: document.selectFirst("meta[name='video:duration']")?.attr("content")?.trim()?.toIntOrNull()
+            if (sec != null && sec > 0) return@run sec
+
+            if (!rawDurText.isNullOrBlank()) {
+                val parts = rawDurText.split(":").mapNotNull { it.trim().toIntOrNull() }
+                val totalSec = when (parts.size) {
+                    3 -> parts[0] * 3600 + parts[1] * 60 + parts[2]
+                    2 -> parts[0] * 60 + parts[1]
+                    1 -> parts[0]
+                    else -> null
+                }
+                if (totalSec != null && totalSec > 0) return@run totalSec
+            }
+
+            val isoDur = document.selectFirst("meta[itemprop='duration']")?.attr("content")?.trim()
+            if (!isoDur.isNullOrBlank()) {
+                val h = Regex("""(\d+)H""", RegexOption.IGNORE_CASE).find(isoDur)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+                val m = Regex("""(\d+)M""", RegexOption.IGNORE_CASE).find(isoDur)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+                val s = Regex("""(\d+)S""", RegexOption.IGNORE_CASE).find(isoDur)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+                val totalSec = h * 3600 + m * 60 + s
+                if (totalSec > 0) return@run totalSec
+            }
+            null
+        }
+
+        val durationMinutes = durationSeconds?.let { maxOf(1, (it + 30) / 60) }
+        val formattedDuration = rawDurText ?: durationSeconds?.let {
+            val m = it / 60
+            val s = it % 60
+            "%02d:%02d".format(m, s)
+        }
+
+        val fullPlot = buildString {
+            if (!formattedDuration.isNullOrBlank()) {
+                append("Durasi: $formattedDuration")
+            }
+            if (!plot.isNullOrBlank()) {
+                if (isNotEmpty()) append("\n\n")
+                append(plot)
+            }
+        }.takeIf { it.isNotBlank() }
+
         val recommendations = document.select("article.vve-card, div.btp_post_card, div.card").mapNotNull {
             it.toSearchResult()
         }
@@ -121,7 +167,8 @@ class VirtuaVixen : MainAPI() {
                 "Referer" to "$mainUrl/",
                 "User-Agent" to USER_AGENT
             )
-            this.plot = plot
+            this.plot = fullPlot
+            this.duration = durationMinutes
             this.tags = tags
             this.recommendations = recommendations
             addActors(actors)

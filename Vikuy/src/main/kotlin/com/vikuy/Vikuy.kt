@@ -131,9 +131,29 @@ class Vikuy : MainAPI() {
         val uploader = document.selectFirst(".uploader-name")?.text()?.trim()
         val handle = document.selectFirst(".uploader-handle")?.text()?.trim()
         val desc = document.selectFirst(".watch-description")?.text()?.trim()
+        val durText = document.selectFirst("#timeDisplay, span.time-display, span.duration-badge, .video-duration")?.text()?.trim()
+
+        val durationMinutes: Int? = if (!durText.isNullOrBlank()) {
+            val parts = durText.split(":").mapNotNull { it.trim().toIntOrNull() }
+            val totalSec = when (parts.size) {
+                3 -> parts[0] * 3600 + parts[1] * 60 + parts[2]
+                2 -> parts[0] * 60 + parts[1]
+                1 -> parts[0]
+                else -> null
+            }
+            if (totalSec != null && totalSec > 0) {
+                maxOf(1, (totalSec + 30) / 60)
+            } else null
+        } else null
 
         val plot = buildString {
-            if (!desc.isNullOrBlank()) append(desc)
+            if (!durText.isNullOrBlank()) {
+                append("Durasi: $durText")
+            }
+            if (!desc.isNullOrBlank()) {
+                if (isNotEmpty()) append("\n\n")
+                append(desc)
+            }
             if (!uploader.isNullOrBlank()) {
                 if (isNotEmpty()) append("\n\n")
                 append("Uploader: $uploader")
@@ -155,6 +175,7 @@ class Vikuy : MainAPI() {
             this.posterUrl = poster?.let { fixUrlNull(it) }
             this.posterHeaders = defaultHeaders
             this.plot = plot
+            this.duration = durationMinutes
             this.recommendations = recommendations
         }
     }

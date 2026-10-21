@@ -26,7 +26,7 @@ class Allpornstream : MainAPI() {
     )
 
     override val mainPage = mainPageOf(
-        "${mainUrl}/" to "Recent",
+        "${mainUrl}/" to "Newest",
         "${mainUrl}/?sort=most_viewed" to "Viewed 7d",
         "${mainUrl}/categories/brunette" to "Brunette",
         "${mainUrl}/categories/shaved-pussy" to "Shaved Pussy",
@@ -85,7 +85,13 @@ class Allpornstream : MainAPI() {
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val res = app.get(request.data, headers = appHeaders)
+        val url = if (page <= 1) {
+            request.data
+        } else {
+            val sep = if (request.data.contains("?")) "&" else "?"
+            "${request.data}${sep}page=$page"
+        }
+        val res = app.get(url, headers = appHeaders)
         val results = nextiparseet(res.text)
         return newHomePageResponse(
             list = HomePageList(
@@ -93,17 +99,23 @@ class Allpornstream : MainAPI() {
                 list = results,
                 isHorizontalImages = true
             ),
-            hasNext = false
+            hasNext = results.isNotEmpty()
         )
     }
-    override suspend fun search(query: String): List<SearchResponse> {
-        val url = "${mainUrl.removeSuffix("/")}/?search=${
-            withContext(Dispatchers.IO) {
-                URLEncoder.encode(query, "utf-8")
-            }
-        }"
+    override suspend fun search(query: String): List<SearchResponse> = search(query, 1).items
+
+    override suspend fun search(query: String, page: Int): SearchResponseList {
+        val encoded = withContext(Dispatchers.IO) {
+            URLEncoder.encode(query, "utf-8")
+        }
+        val url = if (page <= 1) {
+            "${mainUrl.removeSuffix("/")}/?search=$encoded"
+        } else {
+            "${mainUrl.removeSuffix("/")}/?search=$encoded&page=$page"
+        }
         val res = app.get(url, headers = appHeaders)
-        return nextiparseet(res.text)
+        val results = nextiparseet(res.text)
+        return newSearchResponseList(results, hasNext = results.isNotEmpty())
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
