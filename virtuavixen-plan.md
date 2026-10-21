@@ -3,8 +3,8 @@
 ## Pendekatan
 Membangun ekstensi CloudStream 3 untuk situs streaming dewasa AI `virtuavixen.com` di folder `cloudrepo`:
 1. **Katalog & Beranda (Jsoup)**:
-   - Scraping kartu video berbasis DOM class `.btp_post_card`.
-   - Kategori yang diminta:
+   - Scraping kartu video berbasis DOM class `.vve-card` (dan fallback `.btp_post_card`).
+   - Kategori yang didukung:
      - Newest: `all-videos/page/%d/` (halaman 1: `all-videos/`)
      - Best Week: `best-ai-porn-videos-week/page/%d/`
      - Best Month: `best-ai-porn-videos-month/page/%d/`

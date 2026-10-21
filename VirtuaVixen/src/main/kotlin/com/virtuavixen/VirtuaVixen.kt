@@ -36,28 +36,35 @@ class VirtuaVixen : MainAPI() {
         }
 
         val document = app.get(pageUrl, headers = mapOf("User-Agent" to USER_AGENT)).document
-        val items = document.select("div.btp_post_card, div.card").mapNotNull { it.toSearchResult() }
+        val items = document.select("article.vve-card, div.btp_post_card, div.card").mapNotNull { it.toSearchResult() }
         return newHomePageResponse(request.name, items)
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        val link = selectFirst("a.btp_post_card__title")
+        val link = selectFirst("a.vve-card__link")
+            ?: selectFirst("h3.vve-card__title a")
+            ?: selectFirst("a.btp_post_card__title")
             ?: selectFirst("a.btp_post_card__img_hover")
             ?: selectFirst("a")
             ?: return null
         val href = fixUrlNull(link.attr("href")) ?: return null
-        val title = selectFirst("a.btp_post_card__title")?.text()?.trim()
+        val title = selectFirst("h3.vve-card__title")?.text()?.trim()
+            ?: selectFirst("a.vve-card__link")?.attr("aria-label")?.trim()
+            ?: selectFirst("a.btp_post_card__title")?.text()?.trim()
             ?: selectFirst("h6")?.text()?.trim()
             ?: selectFirst("img")?.attr("alt")?.trim()
             ?: return null
         if (title.isBlank()) return null
 
-        val img = selectFirst("img.btp_post_card__img") ?: selectFirst("img")
+        val img = selectFirst("img.vve-card__img")
+            ?: selectFirst("img.btp_post_card__img")
+            ?: selectFirst("img")
         val poster = fixUrlNull(
             img?.attr("data-src")?.takeIf { it.isNotBlank() }
+                ?: selectFirst("noscript img")?.attr("src")?.takeIf { it.isNotBlank() }
                 ?: img?.attr("src")?.takeIf { it.isNotBlank() && !it.startsWith("data:") }
         )
-        val quality = selectFirst(".card-img-overlay .badge")?.text()?.trim().orEmpty()
+        val quality = selectFirst("span.vve-card__res, .card-img-overlay .badge")?.text()?.trim().orEmpty()
 
         return newMovieSearchResponse(title, href, TvType.NSFW) {
             this.posterUrl = poster
@@ -72,39 +79,43 @@ class VirtuaVixen : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         val searchUrl = "$mainUrl/?s=${query.trim().replace(" ", "+")}"
         val document = app.get(searchUrl, headers = mapOf("User-Agent" to USER_AGENT)).document
-        return document.select("div.btp_post_card, div.card").mapNotNull { it.toSearchResult() }
+        return document.select("article.vve-card, div.btp_post_card, div.card").mapNotNull { it.toSearchResult() }
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val document = app.get(url, headers = mapOf("User-Agent" to USER_AGENT)).document
-        val title = document.selectFirst("h1.entry-title, h1")?.text()?.trim()
+        val fixedUrl = url.replace("https://vv2.dtsen.workers.dev", mainUrl)
+        val document = app.get(fixedUrl, headers = mapOf("User-Agent" to USER_AGENT)).document
+        val title = document.selectFirst("h1.vve-h1, h1.entry-title")?.text()?.trim()
             ?: document.selectFirst("meta[property=og:title]")?.attr("content")?.trim()
+            ?: document.selectFirst("h1")?.text()?.trim()
             ?: "VirtuaVixen Video"
 
         val poster = fixUrlNull(
             document.selectFirst("meta[itemprop=thumbnailUrl]")?.attr("content")?.takeIf { it.isNotBlank() }
                 ?: document.selectFirst("meta[property=og:image]")?.attr("content")?.takeIf { it.isNotBlank() }
+                ?: document.selectFirst("div.vve-player img")?.attr("data-src")?.takeIf { it.isNotBlank() }
                 ?: document.selectFirst("img.btp_post_card__img")?.attr("data-src")
                 ?: document.selectFirst("img.btp_post_card__img")?.attr("src")
         )
 
-        val plot = document.selectFirst("meta[name=description]")?.attr("content")?.trim()
-            ?: document.selectFirst("div.desc, div.entry-content, div.video-details")?.text()?.trim()
+        val plot = document.selectFirst("div.vve-desc__content, div.vve-desc, div.desc, div.entry-content, div.video-details")?.text()?.trim()
+            ?: document.selectFirst("meta[name=description]")?.attr("content")?.trim()
 
-        val tags = document.select("a[href*='/tag/']").mapNotNull {
+        val tags = document.select("a[href*='/tag/'], a[href*='/category/']").mapNotNull {
             it.text().trim().takeIf { t -> t.isNotEmpty() }
         }.distinct()
 
-        val actors = document.select("a[href*='/model/']").mapNotNull {
-            it.selectFirst(".btp_post_card__author_text")?.text()?.trim()
+        val actors = document.select("a.vve-creator__name, a[href*='/model/']").mapNotNull {
+            it.ownText().trim().takeIf { m -> m.isNotEmpty() }
+                ?: it.selectFirst(".btp_post_card__author_text")?.text()?.trim()
                 ?: it.text().trim().takeIf { m -> m.isNotEmpty() }
         }.distinct()
 
-        val recommendations = document.select("div.btp_post_card, div.card").mapNotNull {
+        val recommendations = document.select("article.vve-card, div.btp_post_card, div.card").mapNotNull {
             it.toSearchResult()
         }
 
-        return newMovieLoadResponse(title, url, TvType.NSFW, url) {
+        return newMovieLoadResponse(title, fixedUrl, TvType.NSFW, fixedUrl) {
             this.posterUrl = poster
             this.posterHeaders = mapOf(
                 "Referer" to "$mainUrl/",
@@ -123,7 +134,8 @@ class VirtuaVixen : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val document = app.get(data, headers = mapOf("User-Agent" to USER_AGENT)).document
+        val fixedData = data.replace("https://vv2.dtsen.workers.dev", mainUrl)
+        val document = app.get(fixedData, headers = mapOf("User-Agent" to USER_AGENT)).document
         var foundAny = false
 
         // 1. Ekstraksi dari elemen Flowplayer / FV Player data-item
@@ -138,7 +150,9 @@ class VirtuaVixen : MainAPI() {
                 for (i in 0 until sources.length()) {
                     val srcObj = sources.optJSONObject(i) ?: continue
                     var streamLoaderUrl = fixUrlNull(srcObj.optString("src")) ?: continue
-                    streamLoaderUrl = streamLoaderUrl.replace("https://virtuavixen.com", mainUrl)
+                    streamLoaderUrl = streamLoaderUrl
+                        .replace("https://virtuavixen.com", mainUrl)
+                        .replace("https://vv2.dtsen.workers.dev", mainUrl)
 
                     // 1a. Otentikasi FV Player anti-rip performance check
                     try {
@@ -153,7 +167,7 @@ class VirtuaVixen : MainAPI() {
                                 "X-Requested-With" to "XMLHttpRequest",
                                 "User-Agent" to USER_AGENT
                             ),
-                            referer = data
+                            referer = fixedData
                         )
                     } catch (_: Exception) {}
 
@@ -176,7 +190,9 @@ class VirtuaVixen : MainAPI() {
                     if (playlistMatches.isNotEmpty()) {
                         for (match in playlistMatches) {
                             val resDim = match.groupValues[1]
-                            val subUrl = match.groupValues[2].replace("https://virtuavixen.com", mainUrl)
+                            val subUrl = match.groupValues[2]
+                                .replace("https://virtuavixen.com", mainUrl)
+                                .replace("https://vv2.dtsen.workers.dev", mainUrl)
                             val qualityNum = getQualityFromName("${resDim.substringAfter("x")}p")
 
                             try {
@@ -189,7 +205,9 @@ class VirtuaVixen : MainAPI() {
                                 ).text
 
                                 val keyMatch = Regex("""#EXT-X-KEY:METHOD=AES-128,URI=["']([^"']+)["']""").find(subText)
-                                val keyUrl = keyMatch?.groupValues?.get(1)?.replace("https://virtuavixen.com", mainUrl)
+                                val keyUrl = keyMatch?.groupValues?.get(1)
+                                    ?.replace("https://virtuavixen.com", mainUrl)
+                                    ?.replace("https://vv2.dtsen.workers.dev", mainUrl)
 
                                 val keyBytes = if (keyUrl != null) {
                                     cachedKeys.getOrPut(keyUrl) {
@@ -232,7 +250,9 @@ class VirtuaVixen : MainAPI() {
                         // Single playlist
                         try {
                             val keyMatch = Regex("""#EXT-X-KEY:METHOD=AES-128,URI=["']([^"']+)["']""").find(masterText)
-                            val keyUrl = keyMatch?.groupValues?.get(1)?.replace("https://virtuavixen.com", mainUrl)
+                            val keyUrl = keyMatch?.groupValues?.get(1)
+                                ?.replace("https://virtuavixen.com", mainUrl)
+                                ?.replace("https://vv2.dtsen.workers.dev", mainUrl)
                             val keyBytes = if (keyUrl != null) {
                                 val raw = app.get(
                                     keyUrl,
@@ -275,7 +295,7 @@ class VirtuaVixen : MainAPI() {
         if (!foundAny) {
             document.select("iframe").forEach { iframe ->
                 val src = fixUrlNull(iframe.attr("src")) ?: return@forEach
-                val loaded = loadExtractor(src, referer = data, subtitleCallback, callback)
+                val loaded = loadExtractor(src, referer = fixedData, subtitleCallback, callback)
                 if (loaded) foundAny = true
             }
         }
