@@ -8,7 +8,7 @@ import org.jsoup.nodes.Element
 import java.util.UUID
 
 class VirtuaVixen : MainAPI() {
-    override var mainUrl = "https://vv2.dtsen.workers.dev"
+    override var mainUrl = "https://virtuavixen.com"
     override var name = "VirtuaVixen"
     override val hasMainPage = true
     override var lang = "en"
