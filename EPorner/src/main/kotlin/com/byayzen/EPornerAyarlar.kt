@@ -46,7 +46,7 @@ object EPornerAyarlar {
         "/cat/60fps/" to "60 FPS",
         "/cat/4k-porn/60fps/" to "4K60",
         "/cat/4k-porn/japanese/60fps/" to "JAV 4K60",
-        "cat/4k-porn/60fps/big-tits/" to "Big Tits 4K60,
+        "cat/4k-porn/60fps/big-tits/" to "Big Tits 4K60",
         "/cat/4k-porn/indonesia/" to "4K Indo",
         "/cat/ai/" to "AI",
         "/cat/amateur/" to "Amateur",
