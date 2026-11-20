@@ -35,7 +35,7 @@ data class PlaybackResponse(
 )
 
 /**
- * Extractor untuk host Morencius (Vidhide Clone)
+ * Extractor untuk host Vidhide Clone (Morencius / VStream)
  */
 open class MorenciusExtractor : ExtractorApi() {
     override val name = "Morencius"
@@ -50,19 +50,99 @@ open class MorenciusExtractor : ExtractorApi() {
     ) {
         val cleanUrl = url.trim()
         val ref = referer ?: "https://avtub.cx/"
+        val embedOrigin = Regex("""^(https?://[^/]+)""").find(cleanUrl)?.groupValues?.get(1) ?: mainUrl
         val res = app.get(cleanUrl, referer = ref).text
 
         val unpacked = getAndUnpack(res)
-        val m3u8Url = Regex("""(?:hls2|file)\s*:\s*["'](https?://[^"']+\.m3u8[^"']*)["']""").find(unpacked)?.groupValues?.get(1)
-            ?: Regex("""["'](https?://[^"']+\.m3u8[^"']*)["']""").find(unpacked)?.groupValues?.get(1)
-            ?: Regex("""(?:hls2|file)\s*:\s*["'](https?://[^"']+\.m3u8[^"']*)["']""").find(res)?.groupValues?.get(1)
+        val scriptText = "$unpacked\n$res"
 
-        if (m3u8Url != null) {
+        val candidates = mutableListOf<String>()
+        for (key in listOf("hls4", "hls3", "hls2", "file")) {
+            Regex("""["']?$key["']?\s*:\s*["']([^"']+\.m3u8[^"']*)["']""")
+                .findAll(scriptText)
+                .forEach { m -> candidates.add(m.groupValues[1]) }
+        }
+        Regex("""["']((?:https?:)?//[^"']+\.m3u8[^"']*|/stream/[^"']+\.m3u8[^"']*)["']""")
+            .findAll(scriptText)
+            .forEach { m -> candidates.add(m.groupValues[1]) }
+
+        val resolvedUrls = candidates.mapNotNull { raw ->
+            val trimmed = raw.trim().replace("\\/", "/")
+            when {
+                trimmed.startsWith("http://") || trimmed.startsWith("https://") -> trimmed
+                trimmed.startsWith("//") -> "https:$trimmed"
+                trimmed.startsWith("/") -> "$embedOrigin$trimmed"
+                else -> null
+            }
+        }.distinct()
+
+        for (m3u8Url in resolvedUrls) {
+            val playlistRes = runCatching {
+                app.get(
+                    m3u8Url,
+                    referer = "$embedOrigin/",
+                    headers = mapOf("Origin" to embedOrigin)
+                )
+            }.getOrNull() ?: continue
+
+            if (playlistRes.code in 200..299 && playlistRes.text.contains("#EXTM3U")) {
+                M3u8Helper.generateM3u8(
+                    source = name,
+                    streamUrl = m3u8Url,
+                    referer = "$embedOrigin/",
+                    headers = mapOf("Origin" to embedOrigin)
+                ).forEach(callback)
+                return
+            }
+        }
+    }
+}
+
+class VStreamExtractor : MorenciusExtractor() {
+    override val name = "VStream"
+    override val mainUrl = "https://vstream.id"
+}
+
+/**
+ * Extractor untuk host Vidara (vidara.to / bnvcq8s.com)
+ */
+open class VidaraExtractor : ExtractorApi() {
+    override val name = "Vidara"
+    override val mainUrl = "https://vidara.to"
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val cleanUrl = url.trim()
+        val embedOrigin = Regex("""^(https?://[^/]+)""").find(cleanUrl)?.groupValues?.get(1) ?: mainUrl
+        val filecode = Regex("""/(?:e|v)/([a-zA-Z0-9]+)""").find(cleanUrl)?.groupValues?.get(1) ?: return
+
+        val resText = app.post(
+            "$embedOrigin/api/stream",
+            json = mapOf(
+                "filecode" to filecode,
+                "device" to "desktop",
+                "codecs" to emptyList<String>()
+            ),
+            headers = mapOf(
+                "Referer" to cleanUrl,
+                "Origin" to embedOrigin,
+                "Content-Type" to "application/json"
+            )
+        ).text
+
+        val json = JSONObject(resText)
+        val streamUrl = json.optString("streaming_url")
+        if (streamUrl.isNotBlank()) {
             M3u8Helper.generateM3u8(
                 source = name,
-                streamUrl = fixUrl(m3u8Url),
-                referer = "$mainUrl/",
-                headers = mapOf("Origin" to mainUrl)
+                streamUrl = streamUrl,
+                referer = "$embedOrigin/",
+                headers = mapOf("Origin" to embedOrigin)
             ).forEach(callback)
         }
     }

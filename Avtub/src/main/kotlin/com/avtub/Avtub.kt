@@ -110,22 +110,39 @@ class Avtub : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val document = app.get(data).document
+        var foundLinks = false
 
-        val iframes = document.select("iframe").mapNotNull { fixUrlNull(it.attr("src")) }.distinct()
+        val iframes = document.select("iframe").mapNotNull {
+            val raw = it.attr("src").ifBlank { it.attr("data-src") }
+            fixUrlNull(raw)
+        }.distinct()
+
         iframes.forEach { iframeUrl ->
-            // 1. Coba lewat sistem loadExtractor CloudStream
-            val loaded = loadExtractor(iframeUrl, referer = data, subtitleCallback, callback)
+            var iframeFound = false
+            val perIframeCallback: (ExtractorLink) -> Unit = { link ->
+                iframeFound = true
+                foundLinks = true
+                callback(link)
+            }
 
-            // 2. Fallback direct invoke jika belum tertangani
-            if (!loaded) {
-                if (iframeUrl.contains("morencius.com")) {
-                    MorenciusExtractor().getUrl(iframeUrl, referer = data, subtitleCallback, callback)
-                } else if (iframeUrl.contains("ystream.id")) {
-                    YStreamExtractor().getUrl(iframeUrl, referer = data, subtitleCallback, callback)
+            // 1. Coba lewat sistem loadExtractor CloudStream
+            loadExtractor(iframeUrl, referer = data, subtitleCallback, perIframeCallback)
+
+            // 2. Fallback direct invoke jika iframe ini belum tertangani
+            if (!iframeFound) {
+                when {
+                    iframeUrl.contains("morencius.com", ignoreCase = true) ->
+                        MorenciusExtractor().getUrl(iframeUrl, referer = data, subtitleCallback, perIframeCallback)
+                    iframeUrl.contains("vstream.id", ignoreCase = true) ->
+                        VStreamExtractor().getUrl(iframeUrl, referer = data, subtitleCallback, perIframeCallback)
+                    iframeUrl.contains("vidara.to", ignoreCase = true) || iframeUrl.contains("bnvcq8s.com", ignoreCase = true) ->
+                        VidaraExtractor().getUrl(iframeUrl, referer = data, subtitleCallback, perIframeCallback)
+                    iframeUrl.contains("ystream.id", ignoreCase = true) ->
+                        YStreamExtractor().getUrl(iframeUrl, referer = data, subtitleCallback, perIframeCallback)
                 }
             }
         }
 
-        return true
+        return foundLinks
     }
 }

@@ -9,6 +9,8 @@ class AvtubPlugin : Plugin() {
     override fun load(context: Context) {
         registerMainAPI(Avtub())
         registerExtractorAPI(MorenciusExtractor())
+        registerExtractorAPI(VStreamExtractor())
+        registerExtractorAPI(VidaraExtractor())
         registerExtractorAPI(YStreamExtractor())
     }
 }
