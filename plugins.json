@@ -265,6 +265,27 @@
         "name": "Pemersatufun"
     },
     {
+        "iconUrl": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://pimpbunny.com/&size=128",
+        "fileHash": "sha256-21829d65392c827a0294f7e1a7c691676630c369336c486b8dd17f294e341d91",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
+        "fileSize": 43717,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "ByAyzen",
+            "dhamarar"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 1,
+        "internalName": "Pimpbunny",
+        "description": "Looking for the hottest content on the internet? PimpBunny brings you the hottest porn videos and lets you chat with the content creators.",
+        "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/Pimpbunny.cs3",
+        "name": "Pimpbunny"
+    },
+    {
         "iconUrl": "https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://www.pornhub.com/&size=128",
         "fileHash": "sha256-3000368ad1fd445a5a4a525c187ea07d43d4a1e13d3cdff191dcf72727626a50",
         "apiVersion": 1,
