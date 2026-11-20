@@ -21,10 +21,10 @@
     },
     {
         "iconUrl": "https://avtub.cx/wp-content/uploads/2026/09/favicon.ico",
-        "fileHash": "sha256-804625f4c1c05cb5e5d85661131d5159116dca3a56226e23650549938ffccadd",
+        "fileHash": "sha256-42eca0e1cd08baf3ae400a0ed97108184d4a48e589b652d8b9944461038910ec",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
-        "fileSize": 24266,
+        "fileSize": 27964,
         "status": 2,
         "language": "id",
         "authors": [
@@ -33,7 +33,7 @@
         "tvTypes": [
             "NSFW"
         ],
-        "version": 2,
+        "version": 3,
         "internalName": "Avtub",
         "description": "AVTub - Nonton bokep indo dan video bokeh viral gratis kualitas HD",
         "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/Avtub.cs3",
