@@ -2,15 +2,19 @@ package com.semprot
 
 import android.annotation.SuppressLint
 import android.app.Activity
-import android.app.AlertDialog
+import android.app.Dialog
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
@@ -33,7 +37,7 @@ private const val SEMPROT_BASE_URL = "https://www.semprot.com"
 private const val SEMPROT_LOGIN_URL = "$SEMPROT_BASE_URL/login/"
 private const val SEMPROT_IGO_TEST_URL = "$SEMPROT_BASE_URL/forums/film-cewek-indonesia-igo.11/"
 
-private var semprotActiveDialog: AlertDialog? = null
+private var semprotActiveDialog: Dialog? = null
 private val semprotWaitingList = mutableListOf<Continuation<String>>()
 private var semprotIsProcessing = false
 
@@ -110,7 +114,8 @@ private fun isCloudflareChallenge(res: NiceResponse): Boolean {
 
 private fun isXenForoLoggedOut(html: String): Boolean {
     return html.contains("""data-logged-in="false"""", ignoreCase = true) ||
-        html.contains("""action="/login/login"""", ignoreCase = true) && !html.contains("""data-logged-in="true"""", ignoreCase = true)
+        (html.contains("""action="/login/login"""", ignoreCase = true) &&
+            !html.contains("""data-logged-in="true"""", ignoreCase = true))
 }
 
 suspend fun semprotAuthedGet(
@@ -236,10 +241,12 @@ suspend fun semprotWebViewLogin(
         MainScope().launch {
             var resumed = false
             var latestUa: String? = null
+            val screenHeight = activity.resources.displayMetrics.heightPixels
 
             val root = LinearLayout(activity).apply {
                 orientation = LinearLayout.VERTICAL
                 setBackgroundColor(Color.BLACK)
+                fitsSystemWindows = true
                 layoutParams = ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT
@@ -250,13 +257,14 @@ suspend fun semprotWebViewLogin(
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setBackgroundColor(Color.parseColor("#16181A"))
-                setPadding(16, 12, 16, 12)
+                setPadding(24, 16, 24, 16)
             }
 
             val infoText = TextView(activity).apply {
-                text = "Selesaikan Cloudflare & login akun semprot.com"
+                text = "Memuat halaman login semprot.com..."
                 setTextColor(Color.WHITE)
                 textSize = 12f
+                maxLines = 2
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             }
 
@@ -265,7 +273,7 @@ suspend fun semprotWebViewLogin(
                 textSize = 12f
                 setTextColor(Color.WHITE)
                 setBackgroundColor(Color.parseColor("#2D6A4F"))
-                setPadding(20, 8, 20, 8)
+                setPadding(20, 10, 20, 10)
             }
 
             val btnCancel = Button(activity).apply {
@@ -273,7 +281,7 @@ suspend fun semprotWebViewLogin(
                 textSize = 12f
                 setTextColor(Color.WHITE)
                 setBackgroundColor(Color.parseColor("#6B2020"))
-                setPadding(20, 8, 20, 8)
+                setPadding(20, 10, 20, 10)
             }
 
             topBar.addView(infoText)
@@ -293,7 +301,8 @@ suspend fun semprotWebViewLogin(
                 settings.setNeedInitialFocus(true)
                 isFocusable = true
                 isFocusableInTouchMode = true
-                setBackgroundColor(Color.BLACK)
+                minimumHeight = (screenHeight * 0.75f).toInt()
+                setBackgroundColor(Color.WHITE)
 
                 latestUa = settings.userAgentString
                 CookieManager.getInstance().setAcceptCookie(true)
@@ -313,32 +322,32 @@ suspend fun semprotWebViewLogin(
                     }
                 }
 
+                // Khusus D-Pad Android TV (jangan cegat KEYCODE_ENTER saat mengetik di mobile)
                 setOnKeyListener { _, keyCode, event ->
-                    if (event.action == KeyEvent.ACTION_DOWN) {
-                        when (keyCode) {
-                            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                                evaluateJavascript(
-                                    """
-                                    (function() {
-                                        var el = document.activeElement;
-                                        if (!el || el.tagName === 'IFRAME') return;
-                                        var opts = { bubbles: true, cancelable: true, view: window };
-                                        el.dispatchEvent(new MouseEvent('mousedown', opts));
-                                        el.dispatchEvent(new MouseEvent('mouseup', opts));
-                                        el.dispatchEvent(new MouseEvent('click', opts));
-                                    })();
-                                    """.trimIndent(),
-                                    null
-                                )
-                                return@setOnKeyListener true
-                            }
-                        }
+                    if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_CENTER) {
+                        evaluateJavascript(
+                            """
+                            (function() {
+                                var el = document.activeElement;
+                                if (!el || el.tagName === 'IFRAME' || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') return;
+                                var opts = { bubbles: true, cancelable: true, view: window };
+                                el.dispatchEvent(new MouseEvent('mousedown', opts));
+                                el.dispatchEvent(new MouseEvent('mouseup', opts));
+                                el.dispatchEvent(new MouseEvent('click', opts));
+                            })();
+                            """.trimIndent(),
+                            null
+                        )
+                        return@setOnKeyListener true
                     }
                     false
                 }
             }
 
-            root.addView(webView, LinearLayout.LayoutParams(-1, 0, 1f))
+            root.addView(
+                webView,
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+            )
 
             fun cleanupWebView() {
                 runCatching {
@@ -383,43 +392,70 @@ suspend fun semprotWebViewLogin(
             var currentPageUrl = SEMPROT_LOGIN_URL
 
             webView.webViewClient = object : WebViewClient() {
+                override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                    super.onPageStarted(view, url, favicon)
+                    if (!url.isNullOrBlank()) currentPageUrl = url
+                    infoText.text = "Memuat: ${url?.removePrefix("https://")?.take(42) ?: "..."}"
+                }
+
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
                     if (!url.isNullOrBlank()) currentPageUrl = url
                     latestUa = view?.settings?.userAgentString ?: latestUa
+                    infoText.text = "Selesaikan Cloudflare & login, lalu tunggu atau tekan Simpan Cookie"
                     view?.evaluateJavascript(helperJs, null)
+                }
+
+                override fun onReceivedError(
+                    view: WebView?,
+                    request: WebResourceRequest?,
+                    error: WebResourceError?
+                ) {
+                    super.onReceivedError(view, request, error)
+                    if (request?.isForMainFrame == true) {
+                        infoText.text =
+                            "Error ${error?.errorCode}: ${error?.description}. Cek VPN / Private DNS!"
+                    }
                 }
             }
 
             webView.loadUrl(SEMPROT_LOGIN_URL)
 
-            semprotActiveDialog = AlertDialog.Builder(activity)
-                .setView(root)
-                .setCancelable(false)
-                .create()
-
-            semprotActiveDialog?.window?.apply {
-                setBackgroundDrawable(ColorDrawable(Color.BLACK))
-                setDimAmount(1.0f)
-                setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            val dialog = Dialog(activity, android.R.style.Theme_NoTitleBar).apply {
+                setContentView(root)
+                setCancelable(true)
+                window?.apply {
+                    setBackgroundDrawable(ColorDrawable(Color.BLACK))
+                    setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                    clearFlags(
+                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                            WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM
+                    )
+                    @Suppress("DEPRECATION")
+                    setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+                }
             }
+            semprotActiveDialog = dialog
 
             btnCapture.setOnClickListener {
                 val cookie = CookieManager.getInstance().getCookie(SEMPROT_BASE_URL).orEmpty()
                 saveWebViewSession(activity, cookie, latestUa)
-                semprotActiveDialog?.dismiss()
+                dialog.dismiss()
                 cleanupWebView()
                 safeResumeAll(cookie)
             }
 
             btnCancel.setOnClickListener {
-                semprotActiveDialog?.dismiss()
+                dialog.dismiss()
                 cleanupWebView()
                 safeResumeAll("")
             }
 
-            semprotActiveDialog?.setOnShowListener { webView.requestFocus() }
-            semprotActiveDialog?.setOnDismissListener {
+            dialog.setOnShowListener {
+                webView.requestFocus()
+                webView.requestFocusFromTouch()
+            }
+            dialog.setOnDismissListener {
                 if (!resumed) {
                     cleanupWebView()
                     safeResumeAll("")
@@ -428,18 +464,18 @@ suspend fun semprotWebViewLogin(
             }
 
             MainScope().launch {
-                while (semprotActiveDialog?.isShowing == true) {
+                while (dialog.isShowing) {
                     delay(1500)
                     val currentCookie = CookieManager.getInstance().getCookie(SEMPROT_BASE_URL).orEmpty()
                     val onLoginPage = currentPageUrl.contains("/login", ignoreCase = true)
                     if (currentCookie.contains("xf_user=") && !onLoginPage) {
                         saveWebViewSession(activity, currentCookie, latestUa)
                         webView.evaluateJavascript(
-                            "document.body.innerHTML='<h2 style=\"color:#80ed99;text-align:center;margin-top:25%\">Login Berhasil! Menyimpan sesi...</h2>'",
+                            "document.body.innerHTML='<h2 style=\"color:#1b4332;text-align:center;margin-top:25%\">Login Berhasil! Menyimpan sesi...</h2>'",
                             null
                         )
                         delay(800)
-                        semprotActiveDialog?.dismiss()
+                        dialog.dismiss()
                         cleanupWebView()
                         safeResumeAll(currentCookie)
                         return@launch
@@ -447,7 +483,7 @@ suspend fun semprotWebViewLogin(
                 }
             }
 
-            semprotActiveDialog?.show()
+            dialog.show()
         }
     }
 }
