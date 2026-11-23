@@ -15,6 +15,7 @@ import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
@@ -34,7 +35,9 @@ import kotlin.coroutines.Continuation
 import kotlin.coroutines.resume
 
 private const val SEMPROT_BASE_URL = "https://www.semprot.com"
-private const val SEMPROT_LOGIN_URL = "$SEMPROT_BASE_URL/login/"
+private const val SEMPROT_APEX_URL = "https://semprot.com"
+private const val SEMPROT_HOME_URL = "$SEMPROT_BASE_URL/"
+private const val SEMPROT_LOGIN_URL = "$SEMPROT_BASE_URL/login"
 private const val SEMPROT_IGO_TEST_URL = "$SEMPROT_BASE_URL/forums/film-cewek-indonesia-igo.11/"
 
 private var semprotActiveDialog: Dialog? = null
@@ -43,21 +46,49 @@ private var semprotIsProcessing = false
 
 data class SessionVerifyResult(val ok: Boolean, val message: String)
 
-fun clearSemprotCookie(context: Context = SemprotPlugin.appContext) {
-    SemprotSettings.clearAuth(context)
+private fun clearWebViewCookiesForSemprot() {
     runCatching {
         val cookieManager = CookieManager.getInstance()
-        val cookies = cookieManager.getCookie(SEMPROT_BASE_URL)
-        if (!cookies.isNullOrBlank()) {
+        for (domainUrl in listOf(SEMPROT_BASE_URL, SEMPROT_APEX_URL, "https://.semprot.com")) {
+            val cookies = cookieManager.getCookie(domainUrl) ?: continue
             for (pair in cookies.split(";")) {
                 val name = pair.substringBefore("=").trim()
                 if (name.isNotEmpty()) {
-                    cookieManager.setCookie(SEMPROT_BASE_URL, "$name=; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/")
+                    cookieManager.setCookie(domainUrl, "$name=; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/")
+                    cookieManager.setCookie(
+                        domainUrl,
+                        "$name=; Domain=.semprot.com; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/"
+                    )
                 }
             }
-            cookieManager.flush()
+        }
+        cookieManager.flush()
+    }
+}
+
+private fun readMergedWebViewCookies(): String {
+    val cookieManager = CookieManager.getInstance()
+    val merged = LinkedHashMap<String, String>()
+    for (domainUrl in listOf(SEMPROT_APEX_URL, SEMPROT_BASE_URL)) {
+        val raw = cookieManager.getCookie(domainUrl).orEmpty()
+        raw.split(";").forEach { part ->
+            val trimmed = part.trim()
+            val eqIdx = trimmed.indexOf('=')
+            if (eqIdx > 0) {
+                val k = trimmed.substring(0, eqIdx).trim()
+                val v = trimmed.substring(eqIdx + 1).trim()
+                if (k.isNotEmpty() && v.isNotEmpty()) {
+                    merged[k] = v
+                }
+            }
         }
     }
+    return merged.entries.joinToString("; ") { "${it.key}=${it.value}" }
+}
+
+fun clearSemprotCookie(context: Context = SemprotPlugin.appContext) {
+    SemprotSettings.clearAuth(context)
+    clearWebViewCookiesForSemprot()
 }
 
 private fun saveWebViewSession(context: Context, cookie: String, userAgent: String?) {
@@ -241,6 +272,7 @@ suspend fun semprotWebViewLogin(
         MainScope().launch {
             var resumed = false
             var latestUa: String? = null
+            var retriedRedirectReset = false
             val screenHeight = activity.resources.displayMetrics.heightPixels
 
             val root = LinearLayout(activity).apply {
@@ -253,45 +285,66 @@ suspend fun semprotWebViewLogin(
                 )
             }
 
-            val topBar = LinearLayout(activity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
+            val headerWrapper = LinearLayout(activity).apply {
+                orientation = LinearLayout.VERTICAL
                 setBackgroundColor(Color.parseColor("#16181A"))
-                setPadding(24, 16, 24, 16)
+                setPadding(16, 12, 16, 10)
             }
 
             val infoText = TextView(activity).apply {
-                text = "Memuat halaman login semprot.com..."
+                text = "Memuat semprot.com..."
                 setTextColor(Color.WHITE)
                 textSize = 12f
                 maxLines = 2
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            headerWrapper.addView(infoText, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 8 })
+
+            val buttonRow = LinearLayout(activity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
             }
 
-            val btnCapture = Button(activity).apply {
-                text = "Simpan Cookie"
-                textSize = 12f
+            fun makeBarBtn(label: String, bgHex: String): Button = Button(activity).apply {
+                text = label
+                textSize = 11f
                 setTextColor(Color.WHITE)
-                setBackgroundColor(Color.parseColor("#2D6A4F"))
-                setPadding(20, 10, 20, 10)
+                setBackgroundColor(Color.parseColor(bgHex))
+                setPadding(14, 6, 14, 6)
+                minHeight = 0
+                minimumHeight = 0
+                minWidth = 0
+                minimumWidth = 0
             }
 
-            val btnCancel = Button(activity).apply {
-                text = "Tutup"
-                textSize = 12f
-                setTextColor(Color.WHITE)
-                setBackgroundColor(Color.parseColor("#6B2020"))
-                setPadding(20, 10, 20, 10)
-            }
+            val btnHome = makeBarBtn("Home", "#2B3A4A")
+            val btnLoginPage = makeBarBtn("Login", "#3B4A6B")
+            val btnReset = makeBarBtn("Reset", "#5A4214")
+            val btnCapture = makeBarBtn("Simpan", "#2D6A4F")
+            val btnCancel = makeBarBtn("Tutup", "#6B2020")
 
-            topBar.addView(infoText)
-            topBar.addView(btnCapture, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = 8 })
-            topBar.addView(btnCancel, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = 8 })
-            root.addView(topBar, LinearLayout.LayoutParams(-1, -2))
+            buttonRow.addView(btnHome, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = 6 })
+            buttonRow.addView(btnLoginPage, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = 6 })
+            buttonRow.addView(btnReset, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = 6 })
+            buttonRow.addView(btnCapture, LinearLayout.LayoutParams(0, -2, 1.1f).apply { rightMargin = 6 })
+            buttonRow.addView(btnCancel, LinearLayout.LayoutParams(0, -2, 1f))
+            headerWrapper.addView(buttonRow, LinearLayout.LayoutParams(-1, -2))
+
+            root.addView(headerWrapper, LinearLayout.LayoutParams(-1, -2))
 
             val webView = WebView(activity).apply {
+                // Hilangkan tanda "; wv)" & "Version/4.0 " agar Cloudflare/WAF memperlakukannya seperti Chrome Mobile
+                val cleanUa = settings.userAgentString
+                    .replace("; wv)", ")")
+                    .replace("Version/4.0 ", "")
+                    .trim()
+                settings.userAgentString = cleanUa
+                latestUa = cleanUa
+
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
+                settings.databaseEnabled = true
+                settings.cacheMode = WebSettings.LOAD_DEFAULT
+                settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
                 settings.useWideViewPort = true
                 settings.loadWithOverviewMode = true
                 settings.javaScriptCanOpenWindowsAutomatically = true
@@ -304,7 +357,6 @@ suspend fun semprotWebViewLogin(
                 minimumHeight = (screenHeight * 0.75f).toInt()
                 setBackgroundColor(Color.WHITE)
 
-                latestUa = settings.userAgentString
                 CookieManager.getInstance().setAcceptCookie(true)
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
 
@@ -389,20 +441,24 @@ suspend fun semprotWebViewLogin(
                 })();
             """.trimIndent()
 
-            var currentPageUrl = SEMPROT_LOGIN_URL
+            var currentPageUrl = SEMPROT_HOME_URL
 
             webView.webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                    return false
+                }
+
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                     super.onPageStarted(view, url, favicon)
                     if (!url.isNullOrBlank()) currentPageUrl = url
-                    infoText.text = "Memuat: ${url?.removePrefix("https://")?.take(42) ?: "..."}"
+                    infoText.text = "Memuat: ${url?.removePrefix("https://")?.take(50) ?: "..."}"
                 }
 
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
                     if (!url.isNullOrBlank()) currentPageUrl = url
                     latestUa = view?.settings?.userAgentString ?: latestUa
-                    infoText.text = "Selesaikan Cloudflare & login, lalu tunggu atau tekan Simpan Cookie"
+                    infoText.text = "URL: ${currentPageUrl.removePrefix("https://").take(45)} | Login lalu Simpan"
                     view?.evaluateJavascript(helperJs, null)
                 }
 
@@ -413,13 +469,22 @@ suspend fun semprotWebViewLogin(
                 ) {
                     super.onReceivedError(view, request, error)
                     if (request?.isForMainFrame == true) {
-                        infoText.text =
-                            "Error ${error?.errorCode}: ${error?.description}. Cek VPN / Private DNS!"
+                        val desc = error?.description?.toString().orEmpty()
+                        val code = error?.errorCode ?: 0
+                        if (!retriedRedirectReset && (code == ERROR_REDIRECT_LOOP || desc.contains("TOO_MANY_REDIRECTS", true))) {
+                            retriedRedirectReset = true
+                            infoText.text = "Redirect loop terdeteksi, mereset cookie & membuka Home..."
+                            clearWebViewCookiesForSemprot()
+                            view?.post { view.loadUrl(SEMPROT_HOME_URL) }
+                        } else {
+                            infoText.text = "Error $code: $desc (coba tombol Reset / cek VPN & DNS)"
+                        }
                     }
                 }
             }
 
-            webView.loadUrl(SEMPROT_LOGIN_URL)
+            // Mulai dari halaman utama (seperti membuka di Chrome) agar sesi Cloudflare & xf_session terbentuk dulu
+            webView.loadUrl(SEMPROT_HOME_URL)
 
             val dialog = Dialog(activity, android.R.style.Theme_NoTitleBar).apply {
                 setContentView(root)
@@ -437,8 +502,24 @@ suspend fun semprotWebViewLogin(
             }
             semprotActiveDialog = dialog
 
+            btnHome.setOnClickListener {
+                webView.loadUrl(SEMPROT_HOME_URL)
+            }
+
+            btnLoginPage.setOnClickListener {
+                webView.loadUrl(SEMPROT_LOGIN_URL)
+            }
+
+            btnReset.setOnClickListener {
+                retriedRedirectReset = false
+                clearWebViewCookiesForSemprot()
+                webView.clearCache(true)
+                infoText.text = "Cookie WebView direset, memuat ulang Home..."
+                webView.loadUrl(SEMPROT_HOME_URL)
+            }
+
             btnCapture.setOnClickListener {
-                val cookie = CookieManager.getInstance().getCookie(SEMPROT_BASE_URL).orEmpty()
+                val cookie = readMergedWebViewCookies()
                 saveWebViewSession(activity, cookie, latestUa)
                 dialog.dismiss()
                 cleanupWebView()
@@ -466,7 +547,7 @@ suspend fun semprotWebViewLogin(
             MainScope().launch {
                 while (dialog.isShowing) {
                     delay(1500)
-                    val currentCookie = CookieManager.getInstance().getCookie(SEMPROT_BASE_URL).orEmpty()
+                    val currentCookie = readMergedWebViewCookies()
                     val onLoginPage = currentPageUrl.contains("/login", ignoreCase = true)
                     if (currentCookie.contains("xf_user=") && !onLoginPage) {
                         saveWebViewSession(activity, currentCookie, latestUa)
