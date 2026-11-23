@@ -322,7 +322,7 @@ class Semprot : MainAPI() {
             }
         }
 
-        // Thread penuh (Sub-forum IGO)
+        // Thread penuh (Sub-forum IGO): selalu kembalikan MovieLoadResponse agar langsung menampilkan stream (tanpa halaman Episode)
         val firstDoc = semprotAuthedGet(url).document
         val threadTitle = firstDoc.selectFirst("h1.p-title-value")?.text()?.trim() ?: "Semprot Thread"
         val tags = firstDoc.select("a.tagItem").map { it.text().trim() }.filter { it.isNotBlank() }
@@ -344,67 +344,45 @@ class Semprot : MainAPI() {
             it.replace(Regex("""/page-\d+/?$"""), "/").let { u -> if (u.endsWith("/")) u else "$u/" }
         }
 
-        val postEntries = mutableListOf<ThreadPostEntry>()
+        val allLinks = LinkedHashSet<String>()
+        var mainPoster: String? = null
+        var firstSnippet: String? = null
+
         for (p in pagesToScan) {
             val pageDoc = if (p == 1) firstDoc else semprotAuthedGet("${cleanBaseThreadUrl}page-$p").document
             pageDoc.select("article.message").forEach { post ->
                 val links = extractVideoLinks(post)
                 if (links.isNotEmpty()) {
-                    val pid = extractPostId(post) ?: postEntries.size.toString()
-                    val author = post.attr("data-author").takeIf { it.isNotBlank() }
-                        ?: post.selectFirst("h4.message-name a, .message-name")?.text()?.trim()
-                        ?: "Anon"
-                    val postUrl = "${cleanBaseThreadUrl}page-$p#post-$pid"
-                    postEntries.add(
-                        ThreadPostEntry(
-                            postId = pid,
-                            postUrl = postUrl,
-                            title = extractPostTitle(post, "Post #$pid ($author)"),
-                            author = author,
-                            poster = extractPostImage(post),
-                            snippet = post.selectFirst("div.bbWrapper")?.text()?.trim().orEmpty(),
-                            links = links
-                        )
-                    )
+                    allLinks.addAll(links)
+                    if (mainPoster == null) mainPoster = extractPostImage(post)
+                    if (firstSnippet.isNullOrBlank()) {
+                        firstSnippet = post.selectFirst("div.bbWrapper")?.clone()?.apply {
+                            select("blockquote, .bbCodeBlock--quote, script, style").remove()
+                        }?.text()?.trim()
+                    }
                 }
             }
         }
 
-        val mainPoster = postEntries.firstNotNullOfOrNull { it.poster }
-            ?: firstDoc.selectFirst("article.message")?.let { extractPostImage(it) }
+        if (mainPoster == null) {
+            mainPoster = firstDoc.selectFirst("article.message")?.let { extractPostImage(it) }
+        }
+        val plotText = firstSnippet?.takeIf { it.isNotBlank() }
+            ?: firstDoc.selectFirst("article.message div.bbWrapper")?.clone()?.apply {
+                select("blockquote, .bbCodeBlock--quote, script, style").remove()
+            }?.text()?.trim()?.take(600)
 
-        if (postEntries.size <= 1) {
-            val single = postEntries.firstOrNull()
-            val payload = if (single != null) {
-                encodePayload(single.postUrl, single.links)
-            } else {
-                encodePayload(url, emptyList())
-            }
-            val plotText = single?.snippet?.takeIf { it.isNotBlank() }
-                ?: firstDoc.selectFirst("article.message div.bbWrapper")?.text()?.trim()?.take(600)
-
-            return newMovieLoadResponse(threadTitle, url, TvType.NSFW, payload) {
-                this.posterUrl = mainPoster
-                this.posterHeaders = posterHeaders
-                this.tags = tags
-                this.plot = plotText
-            }
+        val payload = if (allLinks.isNotEmpty()) {
+            encodePayload(url, allLinks.toList())
+        } else {
+            encodePayload(url, emptyList())
         }
 
-        val episodes = postEntries.mapIndexed { idx, entry ->
-            newEpisode(encodePayload(entry.postUrl, entry.links)) {
-                this.name = entry.title
-                this.episode = idx + 1
-                this.posterUrl = entry.poster ?: mainPoster
-                this.description = "Oleh ${entry.author} • ${entry.links.size} link video"
-            }
-        }
-
-        return newTvSeriesLoadResponse(threadTitle, url, TvType.NSFW, episodes) {
+        return newMovieLoadResponse(threadTitle, url, TvType.NSFW, payload) {
             this.posterUrl = mainPoster
             this.posterHeaders = posterHeaders
             this.tags = tags
-            this.plot = postEntries.firstOrNull()?.snippet?.take(600)
+            this.plot = plotText
         }
     }
 
@@ -480,34 +458,29 @@ class Semprot : MainAPI() {
         return anyFound
     }
 
-    private data class ThreadPostEntry(
-        val postId: String,
-        val postUrl: String,
-        val title: String,
-        val author: String,
-        val poster: String?,
-        val snippet: String,
-        val links: List<String>
-    )
-
     private fun extractVideoLinks(root: Element): List<String> {
-        val scope = root.selectFirst("div.bbWrapper") ?: root
+        val scope = (root.selectFirst("div.bbWrapper") ?: root).clone()
+        // Kecualikan kutipan balasan (blockquote) agar link tidak double / terambil dari quote
+        scope.select("blockquote, .bbCodeBlock--quote, script, style").remove()
         val found = LinkedHashSet<String>()
 
         fun addCandidate(raw: String?) {
-            val cleaned = raw
-                ?.replace("&amp;", "&")
-                ?.trim()
-                ?.trimEnd('.', ',', ';', ')', ']', '"', '\'')
-                ?: return
-            if (cleaned.isBlank()) return
-            val normalized = if (cleaned.startsWith("http://", ignoreCase = true)) {
-                "https://" + cleaned.substring(7)
-            } else {
-                cleaned
-            }
-            if (isVidaraUrl(normalized) || isPlaymogoUrl(normalized)) {
-                found.add(normalized)
+            if (raw.isNullOrBlank()) return
+            // Pisahkan jika ada beberapa URL menempel tanpa spasi/baris baru
+            val parts = raw.replace("&amp;", "&").split(Regex("""(?=https?://)"""))
+            for (part in parts) {
+                val cleaned = part
+                    .trim()
+                    .trimEnd('.', ',', ';', ')', ']', '"', '\'')
+                if (cleaned.isBlank()) continue
+                val normalized = if (cleaned.startsWith("http://", ignoreCase = true)) {
+                    "https://" + cleaned.substring(7)
+                } else {
+                    cleaned
+                }
+                if (isVidaraUrl(normalized) || isPlaymogoUrl(normalized)) {
+                    found.add(normalized)
+                }
             }
         }
 
@@ -518,10 +491,11 @@ class Semprot : MainAPI() {
         }
         scope.select("[data-url]").forEach { addCandidate(it.attr("data-url")) }
 
-        // Pindai teks mentah, [SPOILER], [CODE], [PLAIN]
-        val rawText = "${scope.text()}\n${scope.html()}"
-        VIDARA_REGEX.findAll(rawText).forEach { addCandidate(it.value) }
-        PLAYMOGO_REGEX.findAll(rawText).forEach { addCandidate(it.value) }
+        // Pindai teks mentah (ganti <br> dengan newline), [SPOILER], [CODE], [PLAIN]
+        val plainWithBreaks = Jsoup.parse(scope.html().replace(Regex("(?i)<br\\s*/?>"), "\n")).text()
+        val rawCombined = "$plainWithBreaks\n${scope.html()}"
+        VIDARA_REGEX.findAll(rawCombined).forEach { addCandidate(it.value) }
+        PLAYMOGO_REGEX.findAll(rawCombined).forEach { addCandidate(it.value) }
 
         return found.toList()
     }
@@ -544,7 +518,8 @@ class Semprot : MainAPI() {
     }
 
     private fun extractPostImage(post: Element): String? {
-        val scope = post.selectFirst("div.message-content, div.bbWrapper") ?: post
+        val scope = (post.selectFirst("div.message-content, div.bbWrapper") ?: post).clone()
+        scope.select("blockquote, .bbCodeBlock--quote").remove()
         val imgs = scope.select("img")
         for (img in imgs) {
             if (img.hasClass("smilie") || img.hasClass("avatar") || img.closest(".avatar") != null) continue

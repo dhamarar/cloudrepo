@@ -36,7 +36,9 @@ open class VidaraExtractor : ExtractorApi() {
     ): Boolean {
         val cleanUrl = url.trim()
         val embedOrigin = Regex("""^(https?://[^/]+)""").find(cleanUrl)?.groupValues?.get(1) ?: mainUrl
-        val filecode = Regex("""/(?:e|v|d)/([a-zA-Z0-9]+)""").find(cleanUrl)?.groupValues?.get(1) ?: return false
+        val filecode = Regex("""/(?:e|v|d|f)/([a-zA-Z0-9]+)""").find(cleanUrl)?.groupValues?.get(1)
+            ?: Regex("""^https?://[^/]+/([a-zA-Z0-9]{6,})(?:[?#].*)?$""").find(cleanUrl)?.groupValues?.get(1)
+            ?: return false
 
         return try {
             val resText = app.post(
