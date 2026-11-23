@@ -347,10 +347,10 @@
     },
     {
         "iconUrl": "https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://www.semprot.com/&size=128",
-        "fileHash": "sha256-115a70ae0a6c2015ee144b1e39efc632ab051b2d21e4fae288ee254fbeaa7e33",
+        "fileHash": "sha256-6d352e92ddf041bfcd6e40dd2d00bdcd29cfd2cc555269d3d72bfd17f1ef4b4a",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/dhamarar/cloudrepo",
-        "fileSize": 70294,
+        "fileSize": 78503,
         "status": 4,
         "language": "id",
         "authors": [
@@ -359,7 +359,7 @@
         "tvTypes": [
             "NSFW"
         ],
-        "version": 6,
+        "version": 7,
         "internalName": "Semprot",
         "description": "Semprot - Akses video sub-forum IGO dan Live Show (memerlukan login akun di Settings plugin)",
         "url": "https://raw.githubusercontent.com/dhamarar/cloudrepo/builds/Semprot.cs3",
