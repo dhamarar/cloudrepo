@@ -18,6 +18,54 @@ open class VidaraExtractor : ExtractorApi() {
     override val mainUrl = "https://vidara.to"
     override val requiresReferer = true
 
+    data class VidaraMetadata(val thumbnail: String?, val title: String?)
+
+    companion object {
+        private val FILECODE_REGEX = Regex("""/(?:e|v|d|f)/([a-zA-Z0-9]+)""")
+        private val ROOT_CODE_REGEX = Regex("""^https?://[^/]+/([a-zA-Z0-9]{6,})(?:[?#].*)?$""")
+        private val ORIGIN_REGEX = Regex("""^(https?://[^/]+)""")
+        private val metadataCache = java.util.concurrent.ConcurrentHashMap<String, VidaraMetadata>()
+
+        fun extractFilecode(url: String): String? {
+            val clean = url.trim()
+            return FILECODE_REGEX.find(clean)?.groupValues?.get(1)
+                ?: ROOT_CODE_REGEX.find(clean)?.groupValues?.get(1)
+        }
+
+        suspend fun fetchMetadata(url: String): VidaraMetadata? {
+            val cleanUrl = url.trim()
+            val filecode = extractFilecode(cleanUrl) ?: return null
+            metadataCache[filecode]?.let { return it }
+
+            val embedOrigin = ORIGIN_REGEX.find(cleanUrl)?.groupValues?.get(1) ?: "https://vidara.to"
+            return runCatching {
+                val resText = app.post(
+                    "$embedOrigin/api/stream",
+                    json = mapOf(
+                        "filecode" to filecode,
+                        "device" to "desktop",
+                        "codecs" to emptyList<String>()
+                    ),
+                    headers = mapOf(
+                        "Referer" to cleanUrl,
+                        "Origin" to embedOrigin,
+                        "Content-Type" to "application/json",
+                        "User-Agent" to SemprotSettings.DEFAULT_USER_AGENT
+                    )
+                ).text
+
+                val json = JSONObject(resText)
+                val thumb = json.optString("thumbnail").trim().takeIf { it.startsWith("http") }
+                val title = json.optString("title").trim().takeIf { it.isNotBlank() }
+                val meta = VidaraMetadata(thumbnail = thumb, title = title)
+                if (thumb != null || title != null) {
+                    metadataCache[filecode] = meta
+                }
+                meta
+            }.getOrNull()
+        }
+    }
+
     override suspend fun getUrl(
         url: String,
         referer: String?,
@@ -35,10 +83,8 @@ open class VidaraExtractor : ExtractorApi() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val cleanUrl = url.trim()
-        val embedOrigin = Regex("""^(https?://[^/]+)""").find(cleanUrl)?.groupValues?.get(1) ?: mainUrl
-        val filecode = Regex("""/(?:e|v|d|f)/([a-zA-Z0-9]+)""").find(cleanUrl)?.groupValues?.get(1)
-            ?: Regex("""^https?://[^/]+/([a-zA-Z0-9]{6,})(?:[?#].*)?$""").find(cleanUrl)?.groupValues?.get(1)
-            ?: return false
+        val embedOrigin = ORIGIN_REGEX.find(cleanUrl)?.groupValues?.get(1) ?: mainUrl
+        val filecode = extractFilecode(cleanUrl) ?: return false
 
         return try {
             val resText = app.post(

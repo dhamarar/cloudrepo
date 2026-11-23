@@ -156,7 +156,9 @@ class Semprot : MainAPI() {
         val items = perThreadCards.flatten().distinctBy { it.cardUrl }.map { card ->
             newMovieSearchResponse(card.title, card.cardUrl, TvType.NSFW) {
                 this.posterUrl = card.poster
-                this.posterHeaders = posterHeaders
+                if (card.poster?.contains("semprot.com", ignoreCase = true) == true) {
+                    this.posterHeaders = posterHeaders
+                }
             }
         }
 
@@ -197,7 +199,7 @@ class Semprot : MainAPI() {
         return result
     }
 
-    private fun extractCardsFromDocument(
+    private suspend fun extractCardsFromDocument(
         doc: Document,
         baseThreadUrl: String,
         pageNum: Int,
@@ -207,6 +209,8 @@ class Semprot : MainAPI() {
         val cards = mutableListOf<StreamCardData>()
         val posts = doc.select("article.message")
         val firstPostId = posts.firstOrNull()?.let { extractPostId(it) }
+        val vidaraSemaphore = Semaphore(8)
+
         for (post in posts) {
             val links = extractVideoLinks(post)
             if (links.isEmpty()) continue
@@ -216,7 +220,7 @@ class Semprot : MainAPI() {
                 ?: post.selectFirst("h4.message-name a, .message-name")?.text()?.trim()
                 ?: "Anon"
             val postUrl = "${baseThreadUrl}page-$pageNum#post-$postId"
-            val postPoster = extractPostImage(post) ?: fallbackPoster
+            val postImages = extractPostImages(post)
             val postSnippet = extractCleanPostText(post)
             val baseLabel = extractPostTitle(post, threadTitle).let {
                 if (it.equals(threadTitle, ignoreCase = true) || postId == firstPostId) {
@@ -226,19 +230,38 @@ class Semprot : MainAPI() {
                 }
             }
 
+            val resolvedMetas = coroutineScope {
+                links.map { videoUrl ->
+                    async {
+                        if (isVidaraUrl(videoUrl)) {
+                            vidaraSemaphore.withPermit { VidaraExtractor.fetchMetadata(videoUrl) }
+                        } else {
+                            null
+                        }
+                    }
+                }.awaitAll()
+            }
+
             links.forEachIndexed { idx, videoUrl ->
+                val meta = resolvedMetas.getOrNull(idx)
                 val hostTag = hostLabel(videoUrl)
+                val label = meta?.title?.takeIf { it.length >= 3 } ?: baseLabel
                 val cardTitle = if (links.size > 1) {
-                    "$baseLabel • #${idx + 1} [$hostTag]"
+                    "$label • #${idx + 1} [$hostTag]"
                 } else {
-                    "$baseLabel [$hostTag]"
+                    "$label [$hostTag]"
                 }
+                val poster = meta?.thumbnail
+                    ?: postImages.getOrNull(idx)
+                    ?: postImages.firstOrNull()
+                    ?: fallbackPoster
+
                 val cardUrl = buildStreamCardUrl(
                     postUrl = postUrl,
                     index = idx,
                     title = cardTitle,
                     videoUrl = videoUrl,
-                    poster = postPoster,
+                    poster = poster,
                     author = author,
                     plot = postSnippet
                 )
@@ -248,7 +271,7 @@ class Semprot : MainAPI() {
                         cardUrl = cardUrl,
                         postUrl = postUrl,
                         videoUrl = videoUrl,
-                        poster = postPoster,
+                        poster = poster,
                         author = author,
                         plot = postSnippet
                     )
@@ -304,53 +327,73 @@ class Semprot : MainAPI() {
         )
     }
 
-    private fun parseLiveCardsFromPage(
+    private suspend fun parseLiveCardsFromPage(
         doc: Document,
         pageNum: Int,
         posterHeaders: Map<String, String>
     ): List<SearchResponse> {
         val posts = doc.select("article.message").reversed()
-        val results = mutableListOf<SearchResponse>()
+        val vidaraSemaphore = Semaphore(8)
 
-        for (post in posts) {
-            val links = extractVideoLinks(post)
-            if (links.isEmpty()) continue
+        val perPostCards = coroutineScope {
+            posts.map { post ->
+                async {
+                    val links = extractVideoLinks(post)
+                    if (links.isEmpty()) return@async emptyList<SearchResponse>()
 
-            val postId = extractPostId(post) ?: continue
-            val author = post.attr("data-author").takeIf { it.isNotBlank() }
-                ?: post.selectFirst("h4.message-name a, .message-name")?.text()?.trim()
-                ?: "Anon"
-            val baseTitle = extractPostTitle(post, "Live #$postId ($author)")
-            val poster = extractPostImage(post)
-            val postUrl = "$mainUrl${LIVE_THREAD_PATH}page-$pageNum#post-$postId"
-            val snippet = extractCleanPostText(post)
+                    val postId = extractPostId(post) ?: return@async emptyList<SearchResponse>()
+                    val author = post.attr("data-author").takeIf { it.isNotBlank() }
+                        ?: post.selectFirst("h4.message-name a, .message-name")?.text()?.trim()
+                        ?: "Anon"
+                    val baseTitle = extractPostTitle(post, "Live #$postId ($author)")
+                    val postImages = extractPostImages(post)
+                    val postUrl = "$mainUrl${LIVE_THREAD_PATH}page-$pageNum#post-$postId"
+                    val snippet = extractCleanPostText(post)
 
-            links.forEachIndexed { idx, videoUrl ->
-                val hostTag = hostLabel(videoUrl)
-                val cardTitle = if (links.size > 1) {
-                    "$baseTitle • #${idx + 1} [$hostTag]"
-                } else {
-                    "$baseTitle [$hostTag]"
-                }
-                val cardUrl = buildStreamCardUrl(
-                    postUrl = postUrl,
-                    index = idx,
-                    title = cardTitle,
-                    videoUrl = videoUrl,
-                    poster = poster,
-                    author = author,
-                    plot = snippet
-                )
-                results.add(
-                    newMovieSearchResponse(cardTitle, cardUrl, TvType.NSFW) {
-                        this.posterUrl = poster
-                        this.posterHeaders = posterHeaders
+                    val metas = links.map { videoUrl ->
+                        async {
+                            if (isVidaraUrl(videoUrl)) {
+                                vidaraSemaphore.withPermit { VidaraExtractor.fetchMetadata(videoUrl) }
+                            } else {
+                                null
+                            }
+                        }
+                    }.awaitAll()
+
+                    links.mapIndexed { idx, videoUrl ->
+                        val meta = metas.getOrNull(idx)
+                        val hostTag = hostLabel(videoUrl)
+                        val label = meta?.title?.takeIf { it.length >= 3 } ?: baseTitle
+                        val cardTitle = if (links.size > 1) {
+                            "$label • #${idx + 1} [$hostTag]"
+                        } else {
+                            "$label [$hostTag]"
+                        }
+                        val poster = meta?.thumbnail
+                            ?: postImages.getOrNull(idx)
+                            ?: postImages.firstOrNull()
+
+                        val cardUrl = buildStreamCardUrl(
+                            postUrl = postUrl,
+                            index = idx,
+                            title = cardTitle,
+                            videoUrl = videoUrl,
+                            poster = poster,
+                            author = author,
+                            plot = snippet
+                        )
+                        newMovieSearchResponse(cardTitle, cardUrl, TvType.NSFW) {
+                            this.posterUrl = poster
+                            if (poster?.contains("semprot.com", ignoreCase = true) == true) {
+                                this.posterHeaders = posterHeaders
+                            }
+                        }
                     }
-                )
-            }
+                }
+            }.awaitAll()
         }
 
-        return results.distinctBy { it.url }
+        return perPostCards.flatten().distinctBy { it.url }
     }
 
     override suspend fun search(query: String, page: Int): SearchResponseList {
@@ -709,21 +752,23 @@ class Semprot : MainAPI() {
         return attrLink?.let { Regex("""post-(\d+)""").find(it)?.groupValues?.get(1) }
     }
 
-    private fun extractPostImage(post: Element): String? {
+    private fun extractPostImages(post: Element): List<String> {
         val scope = (post.selectFirst("div.message-content, div.bbWrapper") ?: post).clone()
         scope.select("blockquote, .bbCodeBlock--quote").remove()
-        val imgs = scope.select("img")
-        for (img in imgs) {
+        val results = LinkedHashSet<String>()
+        for (img in scope.select("img")) {
             if (img.hasClass("smilie") || img.hasClass("avatar") || img.closest(".avatar") != null) continue
             val candidate = img.attr("data-src").ifBlank { img.attr("data-url") }.ifBlank { img.attr("src") }
             if (candidate.isBlank() || candidate.startsWith("data:")) continue
             if (candidate.contains("/styles/default/", ignoreCase = true) || candidate.contains("smilies", ignoreCase = true)) {
                 continue
             }
-            return fixUrlNull(candidate)
+            fixUrlNull(candidate)?.let { results.add(it) }
         }
-        return null
+        return results.toList()
     }
+
+    private fun extractPostImage(post: Element): String? = extractPostImages(post).firstOrNull()
 
     private fun extractCleanPostText(post: Element): String {
         val wrapper = (post.selectFirst("div.bbWrapper") ?: return "").clone()
