@@ -1,13 +1,20 @@
 package com.semprot
 
+import android.util.Base64
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import org.json.JSONArray
 import org.json.JSONObject
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import java.util.concurrent.ConcurrentHashMap
 
 class Semprot : MainAPI() {
     override var mainUrl = "https://www.semprot.com"
@@ -25,6 +32,7 @@ class Semprot : MainAPI() {
         private const val LIVE_THREAD_PATH =
             "/threads/konten-live-show-disini-dilarang-request-ask-bertanya-part-3-bukan-tempat-reques-dan-bertanya-spam-oot-dilarang.1502373/"
 
+        private const val IGO_CONCURRENCY = 4
         private val VIDARA_REGEX = Regex(
             """https?://(?:www\.)?(?:vidara\.(?:to|so)|bnvcq8s\.com)/[^\s"'<>()\[\]]+""",
             RegexOption.IGNORE_CASE
@@ -35,6 +43,25 @@ class Semprot : MainAPI() {
         )
         private val POST_ID_REGEX = Regex("""(?:#post-|/posts/)(\d+)""")
     }
+
+    private data class IgoThreadRef(
+        val url: String,
+        val title: String,
+        val fallbackPoster: String?,
+        val cacheKey: String
+    )
+
+    private data class StreamCardData(
+        val title: String,
+        val cardUrl: String,
+        val postUrl: String,
+        val videoUrl: String,
+        val poster: String?,
+        val author: String,
+        val plot: String
+    )
+
+    private val igoThreadCache = ConcurrentHashMap<String, List<StreamCardData>>()
 
     @Volatile
     private var liveLastPage: Int? = null
@@ -74,7 +101,7 @@ class Semprot : MainAPI() {
         val rows = doc.select("div.structItemContainer-group--threads div.structItem--thread")
             .ifEmpty { doc.select("div.structItem--thread:not(.is-sticky)") }
 
-        val items = rows.mapNotNull { row ->
+        val threadRefs = rows.mapNotNull { row ->
             val titleEl = row.selectFirst("div.structItem-title a[data-tp-primary]")
                 ?: row.select("div.structItem-title a").lastOrNull {
                     !it.hasClass("labelLink") && it.attr("href").contains("/threads/")
@@ -82,27 +109,153 @@ class Semprot : MainAPI() {
 
             val title = titleEl.text().trim().takeIf { it.isNotBlank() } ?: return@mapNotNull null
             val href = fixUrlNull(titleEl.attr("href")) ?: return@mapNotNull null
-            val cleanHref = href.substringBefore("/unread").let {
+            val cleanHref = href.substringBefore("/unread").substringBefore("?").let {
                 if (it.endsWith("/")) it else "$it/"
             }
 
             val imgEl = row.selectFirst("div.structItem-iconContainer img")
-            val poster = fixUrlNull(
+            val avatarPoster = fixUrlNull(
                 imgEl?.attr("data-src")?.takeIf { it.isNotBlank() }
                     ?: imgEl?.attr("src")?.takeIf { it.isNotBlank() }
             )
+            val latestTime = row.selectFirst("time.structItem-latestDate")?.attr("data-time")
+                ?: row.selectFirst("div.structItem-cell--meta dd")?.text()?.trim()
+                ?: ""
 
-            newMovieSearchResponse(title, cleanHref, TvType.NSFW) {
-                this.posterUrl = poster
+            IgoThreadRef(
+                url = cleanHref,
+                title = title,
+                fallbackPoster = avatarPoster,
+                cacheKey = "$cleanHref|$latestTime"
+            )
+        }.distinctBy { it.url }
+
+        val semaphore = Semaphore(IGO_CONCURRENCY)
+        val perThreadCards: List<List<StreamCardData>> = coroutineScope {
+            threadRefs.map { ref ->
+                async {
+                    igoThreadCache[ref.cacheKey]?.let { return@async it }
+                    semaphore.withPermit {
+                        try {
+                            val cards = scanIgoThreadCards(ref)
+                            if (cards.isNotEmpty()) {
+                                igoThreadCache[ref.cacheKey] = cards
+                            }
+                            cards
+                        } catch (e: ErrorLoadingException) {
+                            throw e
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Skip IGO thread ${ref.url}: ${e.message}")
+                            emptyList()
+                        }
+                    }
+                }
+            }.awaitAll()
+        }
+
+        val items = perThreadCards.flatten().distinctBy { it.cardUrl }.map { card ->
+            newMovieSearchResponse(card.title, card.cardUrl, TvType.NSFW) {
+                this.posterUrl = card.poster
                 this.posterHeaders = posterHeaders
             }
-        }.distinctBy { it.url }
+        }
 
         val hasNext = doc.selectFirst("a.pageNav-jump--next") != null
         return newHomePageResponse(
-            list = HomePageList(request.name, items, isHorizontalImages = false),
+            list = HomePageList(request.name, items, isHorizontalImages = true),
             hasNext = hasNext
         )
+    }
+
+    private suspend fun scanIgoThreadCards(ref: IgoThreadRef): List<StreamCardData> {
+        val firstDoc = semprotAuthedGet(ref.url).document
+        val result = extractCardsFromDocument(
+            doc = firstDoc,
+            baseThreadUrl = ref.url,
+            pageNum = 1,
+            threadTitle = ref.title,
+            fallbackPoster = ref.fallbackPoster
+        ).toMutableList()
+
+        // Jika halaman 1 tidak punya link (misal video ada di halaman terakhir), cek halaman terakhir
+        if (result.isEmpty()) {
+            val totalPages = parseTotalPages(firstDoc)
+            if (totalPages > 1) {
+                val lastDoc = semprotAuthedGet("${ref.url}page-$totalPages").document
+                result.addAll(
+                    extractCardsFromDocument(
+                        doc = lastDoc,
+                        baseThreadUrl = ref.url,
+                        pageNum = totalPages,
+                        threadTitle = ref.title,
+                        fallbackPoster = ref.fallbackPoster
+                    )
+                )
+            }
+        }
+
+        return result
+    }
+
+    private fun extractCardsFromDocument(
+        doc: Document,
+        baseThreadUrl: String,
+        pageNum: Int,
+        threadTitle: String,
+        fallbackPoster: String?
+    ): List<StreamCardData> {
+        val cards = mutableListOf<StreamCardData>()
+        val posts = doc.select("article.message")
+        val firstPostId = posts.firstOrNull()?.let { extractPostId(it) }
+        for (post in posts) {
+            val links = extractVideoLinks(post)
+            if (links.isEmpty()) continue
+
+            val postId = extractPostId(post) ?: cards.size.toString()
+            val author = post.attr("data-author").takeIf { it.isNotBlank() }
+                ?: post.selectFirst("h4.message-name a, .message-name")?.text()?.trim()
+                ?: "Anon"
+            val postUrl = "${baseThreadUrl}page-$pageNum#post-$postId"
+            val postPoster = extractPostImage(post) ?: fallbackPoster
+            val postSnippet = extractCleanPostText(post)
+            val baseLabel = extractPostTitle(post, threadTitle).let {
+                if (it.equals(threadTitle, ignoreCase = true) || postId == firstPostId) {
+                    threadTitle
+                } else {
+                    "$threadTitle - $it"
+                }
+            }
+
+            links.forEachIndexed { idx, videoUrl ->
+                val hostTag = hostLabel(videoUrl)
+                val cardTitle = if (links.size > 1) {
+                    "$baseLabel • #${idx + 1} [$hostTag]"
+                } else {
+                    "$baseLabel [$hostTag]"
+                }
+                val cardUrl = buildStreamCardUrl(
+                    postUrl = postUrl,
+                    index = idx,
+                    title = cardTitle,
+                    videoUrl = videoUrl,
+                    poster = postPoster,
+                    author = author,
+                    plot = postSnippet
+                )
+                cards.add(
+                    StreamCardData(
+                        title = cardTitle,
+                        cardUrl = cardUrl,
+                        postUrl = postUrl,
+                        videoUrl = videoUrl,
+                        poster = postPoster,
+                        author = author,
+                        plot = postSnippet
+                    )
+                )
+            }
+        }
+        return cards
     }
 
     private suspend fun getLiveMainPage(
@@ -115,7 +268,7 @@ class Semprot : MainAPI() {
             val parsedLast = parseTotalPages(firstDoc)
             liveLastPage = parsedLast
             if (page <= 1 && parsedLast == 1) {
-                val items = parseLivePostsFromPage(firstDoc, 1, posterHeaders)
+                val items = parseLiveCardsFromPage(firstDoc, 1, posterHeaders)
                 return newHomePageResponse(
                     list = HomePageList(request.name, items, isHorizontalImages = true),
                     hasNext = false
@@ -131,7 +284,7 @@ class Semprot : MainAPI() {
             return newHomePageResponse(HomePageList(request.name, emptyList()), hasNext = false)
         }
         var currentPageDoc = semprotAuthedGet("$mainUrl${LIVE_THREAD_PATH}page-$targetPage").document
-        var items = parseLivePostsFromPage(currentPageDoc, targetPage, posterHeaders)
+        var items = parseLiveCardsFromPage(currentPageDoc, targetPage, posterHeaders)
 
         // Jika halaman terakhir baru saja dibuat dan belum punya post berlink video, mundur hingga 2 halaman pada page 1
         if (page <= 1 && items.isEmpty() && targetPage > 1) {
@@ -141,7 +294,7 @@ class Semprot : MainAPI() {
                 step++
                 liveLastPage = targetPage
                 currentPageDoc = semprotAuthedGet("$mainUrl${LIVE_THREAD_PATH}page-$targetPage").document
-                items = parseLivePostsFromPage(currentPageDoc, targetPage, posterHeaders)
+                items = parseLiveCardsFromPage(currentPageDoc, targetPage, posterHeaders)
             }
         }
 
@@ -151,29 +304,53 @@ class Semprot : MainAPI() {
         )
     }
 
-    private fun parseLivePostsFromPage(
+    private fun parseLiveCardsFromPage(
         doc: Document,
         pageNum: Int,
         posterHeaders: Map<String, String>
     ): List<SearchResponse> {
         val posts = doc.select("article.message").reversed()
-        return posts.mapNotNull { post ->
-            val links = extractVideoLinks(post)
-            if (links.isEmpty()) return@mapNotNull null
+        val results = mutableListOf<SearchResponse>()
 
-            val postId = extractPostId(post) ?: return@mapNotNull null
+        for (post in posts) {
+            val links = extractVideoLinks(post)
+            if (links.isEmpty()) continue
+
+            val postId = extractPostId(post) ?: continue
             val author = post.attr("data-author").takeIf { it.isNotBlank() }
                 ?: post.selectFirst("h4.message-name a, .message-name")?.text()?.trim()
                 ?: "Anon"
-            val title = extractPostTitle(post, "Live #$postId ($author)")
+            val baseTitle = extractPostTitle(post, "Live #$postId ($author)")
             val poster = extractPostImage(post)
             val postUrl = "$mainUrl${LIVE_THREAD_PATH}page-$pageNum#post-$postId"
+            val snippet = extractCleanPostText(post)
 
-            newMovieSearchResponse(title, postUrl, TvType.NSFW) {
-                this.posterUrl = poster
-                this.posterHeaders = posterHeaders
+            links.forEachIndexed { idx, videoUrl ->
+                val hostTag = hostLabel(videoUrl)
+                val cardTitle = if (links.size > 1) {
+                    "$baseTitle • #${idx + 1} [$hostTag]"
+                } else {
+                    "$baseTitle [$hostTag]"
+                }
+                val cardUrl = buildStreamCardUrl(
+                    postUrl = postUrl,
+                    index = idx,
+                    title = cardTitle,
+                    videoUrl = videoUrl,
+                    poster = poster,
+                    author = author,
+                    plot = snippet
+                )
+                results.add(
+                    newMovieSearchResponse(cardTitle, cardUrl, TvType.NSFW) {
+                        this.posterUrl = poster
+                        this.posterHeaders = posterHeaders
+                    }
+                )
             }
         }
+
+        return results.distinctBy { it.url }
     }
 
     override suspend fun search(query: String, page: Int): SearchResponseList {
@@ -268,7 +445,7 @@ class Semprot : MainAPI() {
             val snippet = row.selectFirst("div.contentRow-snippet")?.text()?.trim().orEmpty()
             val rawTitle = titleEl.text().trim()
             val title = if (preferPostAnchor && snippet.isNotBlank()) {
-                "${snippet.take(80)}"
+                snippet.take(80)
             } else {
                 rawTitle
             }
@@ -291,8 +468,26 @@ class Semprot : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse? {
         val posterHeaders = semprotHeaders()
-        val postIdMatch = POST_ID_REGEX.find(url)?.groupValues?.get(1)
 
+        // 1. Jika kartu berasal dari feed stream langsung (IGO / Live), muat instan tanpa re-fetch forum
+        decodeStreamCardUrl(url)?.let { card ->
+            val payload = encodePayload(card.postUrl, listOf(card.videoUrl))
+            return newMovieLoadResponse(card.title, url, TvType.NSFW, payload) {
+                this.posterUrl = card.poster
+                this.posterHeaders = posterHeaders
+                this.plot = buildString {
+                    if (card.author.isNotBlank()) append("Author: ${card.author}\n")
+                    append("Host: ${hostLabel(card.videoUrl)}")
+                    if (card.plot.isNotBlank()) {
+                        append("\n\n")
+                        append(card.plot.take(600))
+                    }
+                }
+            }
+        }
+
+        // 2. Fallback untuk hasil pencarian yang menunjuk ke post spesifik (#post-ID)
+        val postIdMatch = POST_ID_REGEX.find(url)?.groupValues?.get(1)
         if (postIdMatch != null) {
             val doc = semprotAuthedGet(url).document
             val post = doc.selectFirst("article.message[data-content=post-$postIdMatch], article#js-post-$postIdMatch")
@@ -306,7 +501,7 @@ class Semprot : MainAPI() {
             val threadTitle = doc.selectFirst("h1.p-title-value")?.text()?.trim()
             val title = extractPostTitle(post, threadTitle ?: "Post #$postIdMatch")
             val poster = extractPostImage(post)
-            val bodyText = post.selectFirst("div.bbWrapper")?.text()?.trim()
+            val bodyText = extractCleanPostText(post)
             val payload = encodePayload(url, links)
 
             return newMovieLoadResponse(title, url, TvType.NSFW, payload) {
@@ -314,7 +509,7 @@ class Semprot : MainAPI() {
                 this.posterHeaders = posterHeaders
                 this.plot = buildString {
                     append("Author: $author | Post #$postIdMatch")
-                    if (!bodyText.isNullOrBlank()) {
+                    if (bodyText.isNotBlank()) {
                         append("\n\n")
                         append(bodyText.take(600))
                     }
@@ -322,7 +517,7 @@ class Semprot : MainAPI() {
             }
         }
 
-        // Thread penuh (Sub-forum IGO): selalu kembalikan MovieLoadResponse agar langsung menampilkan stream (tanpa halaman Episode)
+        // 3. Fallback untuk hasil pencarian thread penuh -> tetap MovieLoadResponse langsung
         val firstDoc = semprotAuthedGet(url).document
         val threadTitle = firstDoc.selectFirst("h1.p-title-value")?.text()?.trim() ?: "Semprot Thread"
         val tags = firstDoc.select("a.tagItem").map { it.text().trim() }.filter { it.isNotBlank() }
@@ -356,9 +551,7 @@ class Semprot : MainAPI() {
                     allLinks.addAll(links)
                     if (mainPoster == null) mainPoster = extractPostImage(post)
                     if (firstSnippet.isNullOrBlank()) {
-                        firstSnippet = post.selectFirst("div.bbWrapper")?.clone()?.apply {
-                            select("blockquote, .bbCodeBlock--quote, script, style").remove()
-                        }?.text()?.trim()
+                        firstSnippet = extractCleanPostText(post)
                     }
                 }
             }
@@ -367,17 +560,10 @@ class Semprot : MainAPI() {
         if (mainPoster == null) {
             mainPoster = firstDoc.selectFirst("article.message")?.let { extractPostImage(it) }
         }
-        val plotText = firstSnippet?.takeIf { it.isNotBlank() }
-            ?: firstDoc.selectFirst("article.message div.bbWrapper")?.clone()?.apply {
-                select("blockquote, .bbCodeBlock--quote, script, style").remove()
-            }?.text()?.trim()?.take(600)
+        val plotText = firstSnippet?.takeIf { it.isNotBlank() }?.take(600)
+            ?: firstDoc.selectFirst("article.message")?.let { extractCleanPostText(it).take(600) }
 
-        val payload = if (allLinks.isNotEmpty()) {
-            encodePayload(url, allLinks.toList())
-        } else {
-            encodePayload(url, emptyList())
-        }
-
+        val payload = encodePayload(url, allLinks.toList())
         return newMovieLoadResponse(threadTitle, url, TvType.NSFW, payload) {
             this.posterUrl = mainPoster
             this.posterHeaders = posterHeaders
@@ -458,6 +644,12 @@ class Semprot : MainAPI() {
         return anyFound
     }
 
+    private fun hostLabel(url: String): String = when {
+        isVidaraUrl(url) -> "Vidara"
+        isPlaymogoUrl(url) -> "Playmogo"
+        else -> "Stream"
+    }
+
     private fun extractVideoLinks(root: Element): List<String> {
         val scope = (root.selectFirst("div.bbWrapper") ?: root).clone()
         // Kecualikan kutipan balasan (blockquote) agar link tidak double / terambil dari quote
@@ -533,9 +725,15 @@ class Semprot : MainAPI() {
         return null
     }
 
+    private fun extractCleanPostText(post: Element): String {
+        val wrapper = (post.selectFirst("div.bbWrapper") ?: return "").clone()
+        wrapper.select("blockquote, .bbCodeBlock--quote, script, style").remove()
+        return Jsoup.parse(wrapper.html().replace(Regex("(?i)<br\\s*/?>"), "\n")).text().trim()
+    }
+
     private fun extractPostTitle(post: Element, fallback: String): String {
-        val wrapper = post.selectFirst("div.bbWrapper")?.clone() ?: return fallback
-        wrapper.select("blockquote, script, style").remove()
+        val wrapper = (post.selectFirst("div.bbWrapper") ?: return fallback).clone()
+        wrapper.select("blockquote, .bbCodeBlock--quote, script, style").remove()
         val lines = Jsoup.parse(wrapper.html().replace(Regex("(?i)<br\\s*/?>"), "\n")).text()
             .lines()
             .map { it.trim() }
@@ -563,6 +761,53 @@ class Semprot : MainAPI() {
     private fun appendPageQuery(baseUrl: String, page: Int): String {
         val clean = baseUrl.substringBefore("?")
         return if (clean.contains("?")) "$clean&page=$page" else "$clean?page=$page"
+    }
+
+    private fun buildStreamCardUrl(
+        postUrl: String,
+        index: Int,
+        title: String,
+        videoUrl: String,
+        poster: String?,
+        author: String,
+        plot: String
+    ): String {
+        val json = JSONObject().apply {
+            put("t", title)
+            put("p", postUrl)
+            put("v", videoUrl)
+            put("i", poster.orEmpty())
+            put("a", author)
+            put("d", plot.take(600))
+        }.toString()
+        val encoded = Base64.encodeToString(json.toByteArray(Charsets.UTF_8), Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+        val cleanBase = postUrl.substringBefore("#")
+        val sep = if (cleanBase.contains("?")) "&" else "?"
+        val postId = POST_ID_REGEX.find(postUrl)?.groupValues?.get(1) ?: "0"
+        return "$cleanBase${sep}p=$postId&idx=$index#cs=$encoded"
+    }
+
+    private fun decodeStreamCardUrl(url: String): StreamCardData? {
+        val marker = "#cs="
+        val idx = url.indexOf(marker)
+        if (idx == -1) return null
+        val b64 = url.substring(idx + marker.length).trim()
+        if (b64.isEmpty()) return null
+        return runCatching {
+            val raw = String(Base64.decode(b64, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING), Charsets.UTF_8)
+            val json = JSONObject(raw)
+            val videoUrl = json.optString("v")
+            if (videoUrl.isBlank()) return@runCatching null
+            StreamCardData(
+                title = json.optString("t").ifBlank { "Semprot Stream" },
+                cardUrl = url,
+                postUrl = json.optString("p"),
+                videoUrl = videoUrl,
+                poster = json.optString("i").takeIf { it.isNotBlank() },
+                author = json.optString("a"),
+                plot = json.optString("d")
+            )
+        }.getOrNull()
     }
 
     private fun encodePayload(postUrl: String, links: List<String>): String {
